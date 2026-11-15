@@ -3,42 +3,45 @@
 // a hero dies (pits too), a minion dies, or an enemy minion walks into your portal (amounts in config.ts).
 //
 // Files:
-//   config.ts     every setting           layout.ts   map positions (generated with the map)
-//   match.ts      team select, hero pick, seating, match, results (all on one map)
-//   tickets.ts    tickets, hero deaths, pit kills and their credit
-//   souls.ts      minion and kill souls shared by the whole team
-//   stats.ts      each player's kills, deaths, pit throws and more, for the results card
-//   minions.ts    minion waves walked along their routes, minion deaths, portal entries
-//   base.ts       bases heal your team and burn enemies; the Walkers can't be destroyed
-//   camps.ts      camps and their bridge buffs
-//   knockback.ts  an enemy's heavy melee pushes you back
-//   bonus.ts      the bonus round on its own platform, after a match is won
-//   shops.ts      shop models and shop zones
-//   rift.ts       the portals' look: the Unstable Rift at 3x
-//   lockdown.ts   no cheats and no hero swaps (console and pause menu)
-//   hud.tsx       team select, hero pick, ticket strip, results
-//   lobbycam.ts   the camera over the arena behind team select
-//   bots.ts       test bots from team select (lines marked "Bots" elsewhere)
-//   content/      the mod's own effects (the Rift copies), shipped to every player
-//   tools/        make and compile the map and the Rift effects (tools/README.md)
+//   config.ts          every setting
+//   match/  match.ts   team select, hero pick, seating, match, results (all on one map)
+//           bots.ts    test bots from team select (lines marked "Bots" elsewhere)
+//           stats.ts   each player's kills, deaths, pit throws and more, for the results card
+//   rules/  tickets.ts tickets, hero deaths, pit kills and their credit
+//           souls.ts   minion and kill souls shared by the whole team
+//           knockback.ts  an enemy's heavy melee pushes you back
+//           lockdown.ts   no cheats and no hero swaps (console and pause menu)
+//   arena/  layout.ts  map positions (generated with the map)
+//           minions.ts minion waves walked along their routes, minion deaths, portal entries
+//           camps.ts   camps and their bridge buffs
+//           base.ts    bases heal your team and burn enemies; the Walkers can't be destroyed
+//           shops.ts   shop models and shop zones
+//           patrons.ts the Patrons over the spawns
+//           rift.ts    the portals' look: the Unstable Rift at 3x
+//   bonus/  bonus.ts   the bonus round on its own platform, after a match is won
+//   screen/ hud.tsx    team select, hero pick, ticket strip, results
+//           cinema.ts  camera shots
+//           lobbycam.ts   the camera over the arena behind team select
+//   content/           the mod's own effects (the Rift copies), shipped to every player
+//   tools/             make and compile the map and the Rift effects (tools/README.md)
 import { log, onDamage, onDamaged, onFrame, onInput, onStart, onWorld, precache, serverCommand } from 'modlock'
 
-import { baseTick, towerDamage, towersReset, towersTick } from './base'
-import { drawAll } from './hud'
-import { MAP } from './layout'
-import { allowDuplicateHeroes, cast, frame as matchFrame, M, members, whenBonus, whenLive, whenOver, world as matchWorld } from './match'
-import { minionDamaged, minionsStart, minionTick, RIFT_MINION_EFFECT, stopMinions } from './minions'
-import { loadShopZones, placeShops, SHOP_MODEL, shopTick } from './shops'
-import { soulsDamaged, soulsStart, soulsTick } from './souls'
-import { statsEnd, statsStart } from './stats'
-import { ticketsDamaged, ticketsReset, ticketsTick } from './tickets'
-import { BUFF_MODELS, BUFF_PARTICLES, campsHold, campsPrepare, campsStart, campsStop, campsTick } from './camps'
-import { knockbackDamage, knockbackInput, knockbackReset, knockbackTick, knockbackWatch } from './knockback'
-import { bonusReset, bonusStart, bonusTick } from './bonus'
-import { holdShots } from './cinema'
-import { PATRON_MODELS, patronsReset, placePatrons } from './patrons'
-import { gameRiftOff, placeRifts, RIFT_MODELS, RIFT_PARTICLES, riftsReset, riftsTick } from './rift'
-import { cheatsOff, lockdownStart, lockdownTick } from './lockdown'
+import { baseTick, towerDamage, towersReset, towersTick } from './arena/base'
+import { drawAll } from './screen/hud'
+import { MAP } from './arena/layout'
+import { allowDuplicateHeroes, cast, frame as matchFrame, M, members, whenBonus, whenLive, whenOver, world as matchWorld } from './match/match'
+import { minionDamaged, minionsStart, minionTick, RIFT_MINION_EFFECT, stopMinions } from './arena/minions'
+import { loadShopZones, placeShops, SHOP_MODEL, shopTick } from './arena/shops'
+import { soulsDamaged, soulsStart, soulsTick } from './rules/souls'
+import { statsEnd, statsStart } from './match/stats'
+import { ticketsDamaged, ticketsReset, ticketsTick } from './rules/tickets'
+import { BUFF_MODELS, BUFF_PARTICLES, campsHold, campsPrepare, campsStart, campsStop, campsTick } from './arena/camps'
+import { knockbackDamage, knockbackInput, knockbackReset, knockbackTick, knockbackWatch } from './rules/knockback'
+import { bonusReset, bonusStart, bonusTick } from './bonus/bonus'
+import { holdShots } from './screen/cinema'
+import { PATRON_MODELS, patronsReset, placePatrons } from './arena/patrons'
+import { gameRiftOff, placeRifts, RIFT_MODELS, RIFT_PARTICLES, riftsReset, riftsTick } from './arena/rift'
+import { cheatsOff, lockdownStart, lockdownTick } from './rules/lockdown'
 
 let mapName = ''
 let worldStart: number | undefined // game time of the first frame on this map
