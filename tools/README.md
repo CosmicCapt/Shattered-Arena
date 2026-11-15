@@ -4,8 +4,8 @@
 
 - `arena_shapes.py`: every shape of the map (outline, bases, portals, pillars, walls, pits, camps,
   towers, minion routes the mod walks), measured from the SMITE Arena picture. Change the layout here.
-- `build_arena_v1.py`: builds `hl_arena_pit.vmap` and `layout.ts` (positions the mod uses) from it:
-  `python build_arena_v1.py <sample.vmap> <out.vmap> <preview.png> <layout.ts> [solids]`. The sample is any
+- `build_arena_v1.py`: builds `hl_arena_pit.vmap` and `arena/layout.ts` (positions the mod uses) from it:
+  `python build_arena_v1.py <sample.vmap> <out.vmap> <preview.png> ../arena/layout.ts [solids]`. The sample is any
   Hammer-saved map with a mesh. **Don't run it over the master once the map has been edited in Hammer**:
   it rebuilds everything. The map's looks are at the top of it (`LOOKS`): which of Deadlock's materials
   each kind of piece gets, its tint, the texture size, the glow at the bottom of the pits and the sky.
