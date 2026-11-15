@@ -1,7 +1,13 @@
 """make_rift_vpcf.py: write scaled copies of the game's Unstable Rift look pieces as particle sources.
 Reads the compiled koth_aura_*.vpcf_c pieces, multiplies their sizes by SCALE and writes .vpcf (KV3 text)
-for maps/hl_arena_pit/particles/ in the arena_pit addon (inside the map's own folder: modlock publish
-lets a map's .vpk hold only the map's own files)."""
+into tools/rift/src/, which tools/compile_rift.cmd compiles into content/particles/ (the mod's own addon,
+played as particles/{addon}/rift_*.vpcf). Child effects are dropped: rift.ts plays every piece on its own,
+and a compiled child path can't point into the addon, whose name holds a digest of its own content.
+
+    python make_rift_vpcf.py <dir with koth_aura_*.vpcf_c> src
+
+Get the game's pieces with: modlock vpk unpack <Deadlock>/game/citadel/pak01_dir.vpk <dir> particles/generic
+(they are koth_aura_*.vpcf_c under particles/generic/)."""
 import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kv3dump
@@ -17,7 +23,6 @@ PIECES = {  # game piece -> our copy
     'koth_aura_rift_decal_edge': 'rift_decal_edge',
     'koth_aura_light': 'rift_light',
 }
-OURS = 'maps/hl_arena_pit/particles/'
 FLAGS = {1: 'resource', 2: 'resource_name', 8: 'panorama', 16: 'soundevent', 32: 'subclass'}
 HEADER = '<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:vpcf36:version{dd571be4-586e-4f41-8b2d-5bbc969e1c53} -->\n'
 
@@ -51,12 +56,9 @@ def scale(r):
     for op in r.get('m_Renderers', []):
         if op.get('_class') == 'C_OP_RenderProjected' and isinstance(op.get('m_flMaxProjectionDepth'), float):
             op['m_flMaxProjectionDepth'] *= SCALE
-    for ch in r.get('m_Children', []):   # point children at our copies
-        ref = ch.get('m_ChildRef')
-        if isinstance(ref, str):
-            base = ref.rsplit('/', 1)[-1].replace('.vpcf', '')
-            if base in PIECES:
-                ch['m_ChildRef'] = Flagged(OURS + PIECES[base] + '.vpcf', getattr(ref, 'flag', 1) or 1)
+    if 'm_Children' in r:   # every piece is played on its own (rift.ts)
+        changes.append(f"dropped {len(r['m_Children'])} child effect(s)")
+        del r['m_Children']
 
 def text(v, ind=0):
     pad = '\t' * ind

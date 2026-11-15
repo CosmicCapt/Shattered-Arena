@@ -1,15 +1,18 @@
 @echo off
-rem Compile the 3x Unstable Rift effects (maps\hl_arena_pit\particles\rift_*.vpcf in the arena_pit addon)
-rem with Modlock Tools. They live in the map's own folder because modlock publish lets the map's .vpk hold
-rem only the map's own files. The sources are made by tools\rift\make_rift_vpcf.py (Claude runs it); the compiled
-rem files come out in modlock-tools\game\citadel_addons\arena_pit\maps\hl_arena_pit\particles\.
-rem Claude then packs them into maps\hl_arena_pit.vpk, which ships them with the map.
+rem Compile the 3x Unstable Rift effects that the portals play, and put them in the project's content\particles\.
+rem The sources are tools\rift\src\rift_*.vpcf (made by tools\rift\make_rift_vpcf.py from the game's own
+rem koth_aura pieces). This script copies them into the arena_pit addon in Modlock Tools, compiles them with
+rem resourcecompiler, and copies the compiled .vpcf_c files into content\particles\, which modlock build ships
+rem to every player as the mod's own addon (the mod plays them as particles/{addon}/rift_*.vpcf).
+rem After this, fully restart modlock dev. No map recompile or packing is needed.
 setlocal
 
 set "SDK=%USERPROFILE%\modlock-tools"
 set "ADDON=arena_pit"
-set "SRC=%SDK%\content\citadel_addons\%ADDON%\maps\hl_arena_pit\particles"
-set "OUT=%SDK%\game\citadel_addons\%ADDON%\maps\hl_arena_pit\particles"
+set "SRC=%~dp0rift\src"
+set "STAGE=%SDK%\content\citadel_addons\%ADDON%\particles\arena_pit_rift"
+set "OUT=%SDK%\game\citadel_addons\%ADDON%\particles\arena_pit_rift"
+set "DEST=%~dp0..\content\particles"
 
 if not exist "%SRC%\rift_portal_model.vpcf" (
   echo Can't find the rift sources in %SRC%
@@ -20,8 +23,13 @@ if not exist "%SDK%\game\bin\win64\resourcecompiler.exe" (
   goto :fail
 )
 
+echo [1/3] Copying the sources into the %ADDON% addon
+if not exist "%STAGE%" mkdir "%STAGE%"
+copy /y "%SRC%\rift_*.vpcf" "%STAGE%\" >nul || goto :fail
+
+echo [2/3] Compiling
 pushd "%SDK%\game\bin\win64"
-for %%F in ("%SRC%\rift_*.vpcf") do (
+for %%F in ("%STAGE%\rift_*.vpcf") do (
   echo.
   echo ===== %%~nxF
   resourcecompiler.exe -game "%SDK%\game\citadel" -i "%%F" -nop4 -f
@@ -38,8 +46,14 @@ if "%MISSING%"=="1" (
   echo Some effects didn't compile. Copy the output above and send it to Claude.
   goto :fail
 )
+
 echo.
-echo Done. Tell Claude, who packs them into the map.
+echo [3/3] Copying the compiled effects into content\particles
+if not exist "%DEST%" mkdir "%DEST%"
+copy /y "%OUT%\rift_*.vpcf_c" "%DEST%\" >nul || goto :fail
+echo.
+echo Done: %DEST%\rift_*.vpcf_c
+echo Now fully restart modlock dev in the arena-pit project folder.
 pause
 exit /b 0
 

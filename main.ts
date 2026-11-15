@@ -15,10 +15,12 @@
 //   bonus.ts      the bonus round on its own platform, after a match is won
 //   shops.ts      shop models and shop zones
 //   rift.ts       the portals' look: the Unstable Rift at 3x
+//   lockdown.ts   no cheats and no hero swaps (console and pause menu)
 //   hud.tsx       team select, hero pick, ticket strip, results
 //   lobbycam.ts   the camera over the arena behind team select
 //   bots.ts       test bots from team select (lines marked "Bots" elsewhere)
-//   tools/        make, compile and pack the map (tools/README.md)
+//   content/      the mod's own effects (the Rift copies), shipped to every player
+//   tools/        make and compile the map and the Rift effects (tools/README.md)
 import { log, onDamage, onDamaged, onFrame, onInput, onStart, onWorld, precache, serverCommand } from 'modlock'
 
 import { baseTick, towerDamage, towersReset, towersTick } from './base'
@@ -35,7 +37,8 @@ import { knockbackDamage, knockbackInput, knockbackReset, knockbackTick, knockba
 import { bonusReset, bonusStart, bonusTick } from './bonus'
 import { holdShots } from './cinema'
 import { PATRON_MODELS, patronsReset, placePatrons } from './patrons'
-import { gameRiftOff, placeRifts, RIFT_MODELS, RIFT_PARTICLES, riftsReset } from './rift'
+import { gameRiftOff, placeRifts, RIFT_MODELS, RIFT_PARTICLES, riftsReset, riftsTick } from './rift'
+import { cheatsOff, lockdownStart, lockdownTick } from './lockdown'
 
 let mapName = ''
 let worldStart: number | undefined // game time of the first frame on this map
@@ -50,10 +53,12 @@ onStart(() => {
   if (!precache({ resources: Object.values(PATRON_MODELS) })) log('precache refused the Patron models')
   if (!precache({ resources: [RIFT_MINION_EFFECT] })) log('precache refused the rift minion effect')
   knockbackWatch() // the melee key, to tell heavy melee from light
+  lockdownStart() // no cheats or hero swaps
 })
 
 onWorld((map) => {
   mapName = map
+  cheatsOff() // before the mod changes any setting: turning cheats off resets the cheat-protected ones
   worldStart = undefined
   ready = false
   stopMinions()
@@ -102,12 +107,13 @@ onFrame((f) => {
       placeShops()
       loadShopZones()
       gameRiftOff() // the game's own Rift objective has no place here
-      placeRifts() // the portals' look
+      placeRifts() // the portals' look, played one piece a frame by riftsTick
       placePatrons() // the Patrons over the spawns
       campsHold() // no camps in team select; they spawn when the match starts
     }
   }
   matchFrame(f.timeSeconds)
+  lockdownTick(M.clock)
   holdShots(members().filter((m) => !m.bot).map((m) => m.player), (p) => cast.pawn(p))
   if (ready && M.phase === 'live') {
     ticketsTick()
@@ -121,10 +127,9 @@ onFrame((f) => {
     knockbackTick()
     bonusTick()
   }
-  // Camp labels and spawners are made during the hero pick and seating: a slow frame there isn't felt,
-  // and every player in the match is connected by then (floating text made before a player joined, at
-  // team select, never showed for them).
+  // Camp spawners are made during the hero pick and seating: a slow frame there isn't felt.
   if (ready && (M.phase === 'heroes' || M.phase === 'seating')) campsPrepare()
+  if (ready) riftsTick()
   if (ready && f.tick % 8n === 0n) shopTick()
   if (ready) towersTick(f.timeSeconds)
   if (f.timeSeconds >= nextHud || f.timeSeconds < nextHud - 1) {

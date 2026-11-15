@@ -12,13 +12,13 @@
 //     up the middle, into the enemy portal) with Npc.move, and lets the game's AI have it only while an
 //     enemy is within FIGHT_RANGE, so it stops and fights.
 //   - Rift minions: each time a team's enemies have died RIFT_KILLS more times, that team gets RIFT_WAVE
-//     out of its own portal, straight down the middle to the enemy portal. They are the game's Rift
-//     Troopers: ordinary troopers holding the Unstable Rift's trooper buff (RIFT_BUFF: bigger, black, twice
-//     the health and damage). One that goes into the enemy portal costs RIFT_PORTAL_TICKETS; one that dies
+//     out of its own portal, straight down the middle to the enemy portal. They copy the game's Rift
+//     Troopers (ordinary troopers holding the Unstable Rift's trooper buff, RIFT_BUFF), which the game won't
+//     give a mod's trooper: they are made bigger, black and tougher by hand (checkRiftBuff). One that goes into the enemy portal costs RIFT_PORTAL_TICKETS; one that dies
 //     costs its team nothing and pays no souls.
 //   - The map has no trooper spawn points, so the game sends no troopers of its own. (Don't remove troopers
 //     the mod didn't send: comparing them with its own list removed its own minions.)
-import { type DamagedEvent, fireInput, log, type Npc, readModifierField, serverCommand, spawnNpc, toast, type Vector, writeField } from 'modlock'
+import { type DamagedEvent, fireInput, log, type Npc, readModifierField, spawnNpc, toast, type Vector, writeField } from 'modlock'
 
 import { FIGHT_HERO_RANGE, FIGHT_RANGE, FIRST_WAVE_SECONDS, MINION_KILL_TICKETS, MINION_SPEED, MINION_TICKET_FLOOR, PORTAL_TICKETS, RIFT_KILLS, RIFT_MINION_COLOR, RIFT_MINION_HEALTH, RIFT_PORTAL_TICKETS, RIFT_SPACING, RIFT_SPAWN_FORWARD, RIFT_WAVE, WAVE, WAVE_SECONDS } from './config'
 import { MINION_SPAWNS, PORTAL_REACH, PORTALS, type Side } from './layout'
@@ -94,8 +94,6 @@ function sendRiftWave(team: number): void {
     })
     if (npc === undefined) { log(`rift minions: FAILED to spawn ${unit} (${teamName(team)})`); return }
     made++
-    // The entity's index is the low 15 bits of its handle; the game's own command gives a modifier by index.
-    serverCommand(`modifier_create ${npc.entity & 0x7fff} ${RIFT_BUFF} 99999`)
     const minion: Minion = { npc, team, side: 'left', lane: MINION_SPAWNS[team].left.lane, spawnedAt: M.clock, route, wp: 0, at: position, fighting: false, rift: true, buffChecked: false }
     minions.push(minion)
     byEntity.set(npc.entity, minion)

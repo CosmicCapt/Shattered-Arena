@@ -58,6 +58,7 @@ import {
   TICKET_STEP,
 } from './config'
 import { cutShot, shoot, shotsReset } from './cinema'
+import { cheatCommand } from './lockdown'
 import { CENTRE, MAP, SPAWNS } from './layout'
 import { camerasReset, lobbyCamera, releaseCamera } from './lobbycam'
 
@@ -703,7 +704,7 @@ function setSouls(m: Member, souls: number): void {
  * the enemy Walkers fall, and this map has none to kill.
  */
 function unlockItemSlots(): void {
-  if (!serverCommand('citadel_unlock_flex_slots')) log('match: the game refused citadel_unlock_flex_slots')
+  if (!cheatCommand('citadel_unlock_flex_slots')) log('match: the game refused citadel_unlock_flex_slots')
 }
 
 /** setRespawnTime sets every respawn the game gives, all match long, to the same seconds. */

@@ -1,7 +1,7 @@
 {
   "slug": "arena-pit",
   "name": "Shattered Arena",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "language": "LANGUAGE_TYPESCRIPT",
   "description": "Inspired by Corrupted Arena Limited Time Mode from SMITE",
   "map": "hl_arena_pit"

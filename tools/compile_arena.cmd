@@ -46,7 +46,8 @@ copy /y "%OUT%" "%PROJECT_MAPS%\%MAP%.vpk" >nul || goto :fail
 copy /y "%OUT%" "%DEADLOCK_MAPS%\%MAP%.vpk" >nul || goto :fail
 echo.
 echo Done: %PROJECT_MAPS%\%MAP%.vpk and %DEADLOCK_MAPS%\%MAP%.vpk
-echo Now run "..\modlock.exe dev" in the arena-pit project folder.
+echo Now fully restart modlock dev in the arena-pit project folder. ^(The Rift effects ship in content\, so
+echo nothing needs packing into the map.^)
 pause
 exit /b 0
 

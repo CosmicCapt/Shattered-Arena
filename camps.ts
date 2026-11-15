@@ -3,7 +3,8 @@
 //   - A camp killed to the last unit drops its bridge buff where it stood: blue camps the casting buff, red
 //     the gun buff, purple the movement buff. Each camp has a game pickup spawner (citadel_pickup_spawner) set
 //     to its buff, made during team select; its SpawnPickup input drops the real bridge buff
-//     (citadel_pickup_modifier), which heavy melee takes, with the buff's real values. A label floats over it.
+//     (citadel_pickup_modifier), which heavy melee takes, with the buff's real values. The map says which buff
+//     a camp drops (its ring and lettering); a floating label was tried and never showed.
 //     (What else was tried is in MODLOCK_NOTES.md under "Bridge buffs".)
 //   - A taken pickup stays in the world, inactive, so the buff counts as taken when the pickup goes inactive
 //     or is gone, or a hero next to it now holds the buff. The camp comes back CAMP_RESPAWN seconds later.
@@ -12,7 +13,7 @@
 // The game would spawn camps on its own 2-minute cycle, so each camp is kept
 // disabled (its SetDisabled input) except when this module spawns it (SpawnNeutrals), and units that show
 // up early are removed. The camp's kind is in its map name, arena_camp_<kind>_<n>.
-import { createEntity, createText, entityClass, entityName, entityPosition, findEntities, fireInput, log, readField, readModifierField, serverCommand, type Vector, writeField, type WorldObject } from 'modlock'
+import { createEntity, entityClass, entityName, entityPosition, findEntities, fireInput, log, readField, readModifierField, serverCommand, type Vector, writeField } from 'modlock'
 
 import { CAMP_RESPAWN } from './config'
 import { cast, M, members } from './match'
@@ -20,11 +21,9 @@ import { cast, M, members } from './match'
 type Kind = 'blue' | 'red' | 'purple'
 const MODIFIER: Record<Kind, string> = { blue: 'modifier_citadel_powerup_casting', red: 'modifier_citadel_powerup_gun', purple: 'modifier_citadel_powerup_movement' }
 const BUFF_TITLE: Record<Kind, string> = { blue: 'casting', red: 'gun', purple: 'movement' }
-const LABEL: Record<Kind, string> = { blue: 'Casting buff', red: 'Gun buff', purple: 'Movement buff' }
 /** The game's bridge buff pickups (Deadlock's scripts/misc.vdata), class citadel_pickup_modifier. */
 const PICKUP: Record<Kind, string> = { blue: 'casting_powerup_pickup', red: 'gun_powerup_pickup', purple: 'movement_powerup_pickup' }
 const PICKUP_CLASS = 'citadel_pickup_modifier'
-const COLOR: Record<Kind, number> = { blue: 0x5aa0ffff, red: 0xff5050ff, purple: 0xc070ffff }
 /**
  * Bridge buff assets (from Deadlock's scripts/misc.vdata), precached at start: one loaded mid-match
  * asserts and freezes the game.
@@ -61,7 +60,6 @@ interface Camp {
   asks: number
   disabled: boolean | undefined
   units: Set<number> // up: the units this camp spawned
-  label: WorldObject | undefined // the buff's label, made once and shown only while a buff lies there
   pickup: number | undefined // the game's bridge buff pickup lying there
   spawner: number | undefined // the game's bridge buff spawner at this camp (hidden)
   dropWaitUntil: number // waiting for the spawner's drop until then (0: not waiting)
@@ -73,7 +71,7 @@ interface Camp {
 let camps: Camp[] = []
 let live = false
 let nextTick = 0
-let markersMade = 0 // how many camps have their label and spawner (made one per tick)
+let markersMade = 0 // how many camps have their pickup spawner (made one per tick)
 let nextMarker = 0
 
 function kindOf(name: string): Kind | undefined {
@@ -125,7 +123,7 @@ function findCamps(): Camp[] {
     const kind = kindOf(name)
     const at = entityPosition(entity)?.position
     if (kind === undefined || at === undefined) continue
-    out.push({ entity, name, kind, at, state: 'waiting', dueAt: Infinity, askedAt: undefined, asks: 0, disabled: undefined, units: new Set(), label: undefined, pickup: undefined, spawner: undefined, dropWaitUntil: 0, knownPickups: new Set(), holdersAtDrop: new Set(), spawnTries: 0 })
+    out.push({ entity, name, kind, at, state: 'waiting', dueAt: Infinity, askedAt: undefined, asks: 0, disabled: undefined, units: new Set(), pickup: undefined, spawner: undefined, dropWaitUntil: 0, knownPickups: new Set(), holdersAtDrop: new Set(), spawnTries: 0 })
   }
   return out
 }
@@ -158,7 +156,6 @@ export function campsStart(): void {
     c.askedAt = undefined
     c.asks = 0
     c.units.clear()
-    showMarker(c, false)
   }
   log(`camps: spawning ${camps.length} camps`)
 }
@@ -167,7 +164,6 @@ export function campsStart(): void {
 export function campsStop(): void {
   live = false
   for (const c of camps) {
-    showMarker(c, false)
     if (c.pickup !== undefined && entityClass(c.pickup) !== undefined) fireInput(c.pickup, 'Kill')
     c.pickup = undefined
     setDisabled(c, true)
@@ -175,12 +171,9 @@ export function campsStop(): void {
   }
 }
 
-// Each camp's label (hidden) and its pickup spawner: the game's generic pickup spawner, set to this camp's
-// bridge buff, with its own timers pushed far off so it only spawns when told (its SpawnPickup input).
+// Each camp's pickup spawner: the game's generic pickup spawner, set to this camp's bridge buff, with its
+// own timers pushed far off so it only spawns when told (its SpawnPickup input).
 function makeMarker(c: Camp): void {
-  c.label = createText({ text: `${LABEL[c.kind]}\nheavy melee to take`, position: { x: c.at.x, y: c.at.y, z: c.at.z + 190 }, fontSize: 60, color: COLOR[c.kind], faceCamera: true, align: 'center' })
-  c.label?.showOnlyTo([])
-  if (c.label === undefined) log(`camps: ${c.name}: the game refused the buff label`)
   c.spawner = createEntity({
     designerName: 'citadel_pickup_spawner', subclass: 'citadel_pickup_spawner', team: 4, position: { x: c.at.x, y: c.at.y, z: c.at.z + 40 },
     keyValues: [{ key: 'pickup_subclass', value: { text: PICKUP[c.kind] } }, { key: 'spawn_delay_override', value: { number: 1e6 } }, { key: 'respawn_time_override', value: { number: 1e6 } }],
@@ -189,19 +182,14 @@ function makeMarker(c: Camp): void {
 }
 
 /**
- * campsPrepare makes the camps' labels and spawners before the match, one camp per tick: creating a
- * world object can take over 100 ms, which is better spent before the match than in it. Call every frame
+ * campsPrepare makes the camps' spawners before the match, one camp per tick: creating an entity can
+ * take a while, which is better spent before the match than in it. Call every frame
  * during the hero pick and seating.
  */
 export function campsPrepare(): void {
   if (live || markersMade >= camps.length || M.clock < nextMarker) return
   nextMarker = M.clock + TICK
   makeMarker(camps[markersMade++])
-}
-
-function showMarker(c: Camp, shown: boolean): void {
-  if (shown) c.label?.showToAll()
-  else c.label?.showOnlyTo([])
 }
 
 // The camp is cleared: note who already holds its buff, and ask the spawner for the buff.
@@ -236,7 +224,6 @@ function findDrop(c: Camp): boolean {
     writeField(e, 'CCitadel_Pickup', 'm_bInteractive', 'bool', true)
     c.pickup = e
     c.dropWaitUntil = 0
-    showMarker(c, true)
     log(`camps: ${c.name} cleared, dropped the ${BUFF_TITLE[c.kind]} buff`)
     return false
   }
@@ -279,7 +266,6 @@ function takeBuff(c: Camp): boolean {
   if (holder === undefined && entityClass(c.pickup) !== undefined && pickupActive(c.pickup)) return false
   log(`camps: ${holder ?? 'someone'} took the ${BUFF_TITLE[c.kind]} buff from ${c.name}`)
   c.pickup = undefined
-  showMarker(c, false)
   return true
 }
 
