@@ -12,7 +12,7 @@ Builds, in grey blockout (dev_measuregeneric01b) with tints:
     ceiling at 1,000
   - the pits: purple rims straight down to -1,600 and no floor (the mod kills heroes below -100)
 Entities: sun, team spawns, nav seeds, four lane paths (one per minion spawn) with trooper spawns,
-shop zones and markers, portal markers, six tier 1 camps, four Walkers (T2 towers; the mod makes them
+shop zones and markers, portal markers, six tier 3 camps, four Walkers (T2 towers; the mod makes them
 indestructible). No Deadlock models (they crash Hammer); the mod places the shop models.
 Don't run it over the map once it has been edited in Hammer: it rebuilds everything."""
 import sys, os, math
@@ -432,10 +432,10 @@ for team, p in E['shops']:
 for team, p in E['portals']:
     entities.append(make_entity('info_target_server_only', (p[0], p[1], 0), targetname=f'arena_portal_{TN[team]}'))
 
-# Camps: tier 1, two units each (like Midtown's small camps). The kind (blue, red, purple) is in the camp's
+# Camps: tier 3, two strong units each (16 Nov 2026; they were tier 1, Midtown's small camps' units). The kind (blue, red, purple) is in the camp's
 # name, arena_camp_<kind>_<n>, which the mod reads to pick the bridge buff it drops.
 # Each buff has its own kind of unit, the same on both sides: Specimens (casting), Lanterns (gun), Gutter Ghouls (movement).
-CAMP_UNIT = {'blue': 'neutral_specimen_normal', 'red': 'neutral_lantern_normal', 'purple': 'neutral_drain_creature_normal'}
+CAMP_UNIT = {'blue': 'neutral_specimen_strong', 'red': 'neutral_lantern_strong', 'purple': 'neutral_drain_creature_strong'}
 for i, (kind, p) in enumerate(E['camps'], 1):
     name = f'arena_camp_{kind}_{i}'
     entities.append(make_entity('info_neutral_trooper_camp', (p[0], p[1], 0), targetname=name, campname=name,

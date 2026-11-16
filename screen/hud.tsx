@@ -1,8 +1,10 @@
-// What each player sees: team select (with ready-up and test bots) and the hero pick, then during the
-// match a ticket strip under the game's top bar, and a results card at the end.
-import { type Child, heroes, type Player, Score, show, TopStrip } from 'modlock'
+// What each player sees: team select (with ready-up and test bots) and the hero pick, each filling the
+// screen in black with a team down each side, then during the match the mod's own top bar (heroes, clock,
+// tickets) and the rift bars, and the results scoreboard at the end.
+import { type Child, heroes, type Player, show } from 'modlock'
 
 import { B } from '../bonus/bonus'
+import { riftProgress } from '../arena/minions'
 import { addTestBot, removeTestBot } from '../match/bots' // Bots
 import {
   BONUS_MOVING_AT,
@@ -11,6 +13,7 @@ import {
   HUD_REBUILD_SECONDS,
   KNOCKBACK_PERCENT_MAX,
   RESPAWN_OPTIONS,
+  RIFT_KILLS,
   SOUL_SCALE_MAX,
   SOUL_SCALE_MIN,
   START_SOULS_MAX,
@@ -48,16 +51,28 @@ import {
 import { type StatRow, statRows } from '../match/stats'
 import { T } from '../rules/tickets'
 
-const AMBER_COLOR = '#ffb340'
-const SAPPHIRE_COLOR = '#4da6ff'
-const GOLD = '#f5c542'
-const TEXT = '#ffffff'
-const DIM = '#9aa7b4'
-const GOOD = '#5ee07a'
-const CARD = '#121a24f2'
+// The HUD kit's colours (modlock's theme), so these screens match the ticket strip.
+const AMBER_COLOR = '#f0a530' // team names and headings
+const SAPPHIRE_COLOR = '#7d9fe0'
+const AMBER_EDGE = '#d4860b' // team panel edges
+const SAPPHIRE_EDGE = '#4d75c3'
+const GOLD = '#ebc934'
+const TEXT = '#ffefd7'
+const MUTED = '#bfb3a1'
+const DIM = '#8a857a'
+const GOOD = '#36c47f'
+const BAD = '#ff6a3d'
+const INK = '#10130d' // text on a filled button
+const BLACK = '#0b0d09' // the screens' background
+const PLATE = '#151611'
+const RAISED = '#1e1f19'
+const LIT = '#2b2a24'
+const PURPLE = '#b05cff'
 
 const color = (team: number | undefined) => (team === AMBER ? AMBER_COLOR : team === SAPPHIRE ? SAPPHIRE_COLOR : DIM)
-const PURPLE = '#b05cff'
+const edge = (team: number) => (team === AMBER ? AMBER_EDGE : SAPPHIRE_EDGE)
+const panelTint = (team: number) => (team === AMBER ? '#21170a' : '#0e1626')
+const rowTint = (team: number) => (team === AMBER ? '#2c1f0d' : '#152036')
 
 // Each redraw only sends what changed, so a screen the player's game dropped would stay gone. The match
 // screen gets a new key (which rebuilds it whole) when the player respawns and every HUD_REBUILD_SECONDS.
@@ -88,26 +103,45 @@ export function drawAll(): void {
   }
 }
 
+// Team select and the hero pick fill the screen in black: one team down each side, the rest in the middle.
 function Screen(props: { viewer: Member }) {
   return (
-    <panel
-      style={{
-        width: '100%',
-        height: '100%',
-        // A soft vignette, so the arena behind the picker stays visible.
-        gradient: { shape: 'radial', colors: ['#0a0f1620', '#03050acc'] },
-      }}
-    >
-      {M.phase === 'lobby' ? <Lobby viewer={props.viewer} /> : <HeroPick viewer={props.viewer} />}
+    <panel style={{ width: '100%', height: '100%', background: BLACK }}>
+      <panel style={{ flow: 'right', width: 'fill', height: 'fill', margin: 56 }}>
+        {M.phase === 'lobby' ? <Lobby viewer={props.viewer} /> : <HeroPick viewer={props.viewer} />}
+      </panel>
     </panel>
   )
 }
 
-function Title() {
+function Title(props: { size: number; line: string; tone?: string }) {
   return (
-    <panel style={{ flow: 'down', width: 'fill' }}>
-      <label style={{ fontSize: 44, face: 'block', uppercase: true, letterSpacing: 3, horizontalAlign: 'center', color: PURPLE, margin: [0, 0, 20, 0] }}>Shattered Arena</label>
+    <panel style={{ flow: 'down', horizontalAlign: 'center' }}>
+      <label style={{ fontSize: props.size, face: 'block', uppercase: true, letterSpacing: 4, horizontalAlign: 'center', textAlign: 'center', noWrap: true, color: PURPLE }}>Shattered Arena</label>
+      <label style={{ fontSize: 22, face: 'block', uppercase: true, letterSpacing: 3, horizontalAlign: 'center', color: props.tone ?? MUTED, margin: [4, 0, 0, 0] }}>{props.line}</label>
     </panel>
+  )
+}
+
+/** Tag is a small outlined word, such as Host, Bot or Ready. */
+function Tag(props: { text: string; tone: string; filled?: boolean }) {
+  return (
+    <label
+      style={{
+        verticalAlign: 'center',
+        fontSize: 12,
+        face: 'block',
+        uppercase: true,
+        padding: [2, 8],
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: props.tone,
+        background: props.filled === true ? props.tone : '#00000000',
+        color: props.filled === true ? INK : props.tone,
+      }}
+    >
+      {props.text}
+    </label>
   )
 }
 
@@ -117,57 +151,52 @@ function Lobby(props: { viewer: Member }) {
   const { ready, total } = readyCount()
   const status = M.countdownAt !== undefined ? `Everyone is ready. Hero select in ${secondsUntil(M.countdownAt)}` : lobbyProblem()
   return (
-    <panel
-      enter={{ opacity: 0, translate: [0, 24] }}
-      style={{
-        flow: 'down',
-        horizontalAlign: 'center',
-        verticalAlign: 'center',
-        width: 760,
-        padding: [26, 28, 24, 28],
-        background: CARD,
-        borderRadius: 8,
-        boxShadow: { blur: 40, color: '#000000aa' },
-        transition: 0.25,
-      }}
-    >
-      <Title />
-      <HostSettings viewer={m} />
-      <panel style={{ flow: 'right', width: 'fill' }}>
-        <TeamColumn team={AMBER} viewer={m} />
-        <TeamColumn team={SAPPHIRE} viewer={m} />
+    <panel enter={{ opacity: 0 }} style={{ flow: 'right', width: 'fill', height: 'fill', transition: 0.25 }}>
+      <TeamColumn team={AMBER} viewer={m} />
+      <panel style={{ flow: 'down', width: 'fill', verticalAlign: 'center', margin: [0, 48] }}>
+        <Title size={60} line="Team select" />
+        <HostSettings viewer={m} />
+        <label style={{ fontSize: 22, face: 'block', uppercase: true, horizontalAlign: 'center', color: TEXT, margin: [40, 0, 14, 0] }}>{`Ready: ${ready} / ${total}`}</label>
+        <ReadyButton viewer={m} />
+        <label style={{ fontSize: 18, horizontalAlign: 'center', color: M.countdownAt !== undefined ? GOLD : MUTED, margin: [16, 0, 0, 0] }}>
+          {status ?? 'Everyone ready starts the hero pick'}
+        </label>
       </panel>
-      <label style={{ fontSize: 17, bold: true, horizontalAlign: 'center', color: TEXT, margin: [18, 0, 8, 0] }}>{`Ready: ${ready} / ${total}`}</label>
-      <ReadyButton viewer={m} />
-      {status === undefined ? null : (
-        <label style={{ fontSize: 14, horizontalAlign: 'center', color: M.countdownAt !== undefined ? GOLD : DIM, margin: [10, 0, 0, 0] }}>{status}</label>
-      )}
+      <TeamColumn team={SAPPHIRE} viewer={m} />
     </panel>
   )
 }
 
-// The host (the first player in) sets the match options with − and +; everyone else sees the values.
-// The rows are left-aligned in a centred block, so their labels and controls line up.
+// Everyone sees the match options; only the host (the first player in) has − and + to change them.
 function HostSettings(props: { viewer: Member }) {
+  const h = host()
+  const mine = h === props.viewer
   return (
-    <panel style={{ flow: 'down', horizontalAlign: 'center', margin: [0, 0, 14, 0] }}>
-      <HostSetting viewer={props.viewer} label="Tickets per team" value={`${M.startTickets}`}
+    <panel style={{ flow: 'down', horizontalAlign: 'center', margin: [44, 0, 0, 0], padding: [22, 28, 18, 28], borderRadius: 8, background: PLATE, borderWidth: 1, borderColor: LIT }}>
+      <panel style={{ flow: 'right', width: 'fill', margin: [0, 0, 10, 0] }}>
+        <label style={{ width: 'fill', verticalAlign: 'center', fontSize: 18, face: 'block', uppercase: true, color: TEXT }}>Match settings</label>
+        {mine ? <Tag text="You can change these" tone={GOLD} /> : <Tag text={h === undefined ? 'Set by the host' : `Set by ${h.name}`} tone={MUTED} />}
+      </panel>
+      <HostSetting mine={mine} label="Tickets per team" value={`${M.startTickets}`}
         change={changeTickets} atMin={M.startTickets <= TICKET_MIN} atMax={M.startTickets >= TICKET_MAX} />
-      <HostSetting viewer={props.viewer} label="Respawn time" value={`${M.respawnSeconds} s`}
+      <HostSetting mine={mine} label="Respawn time" value={`${M.respawnSeconds} s`}
         change={changeRespawn} atMin={M.respawnSeconds <= RESPAWN_OPTIONS[0]} atMax={M.respawnSeconds >= RESPAWN_OPTIONS[RESPAWN_OPTIONS.length - 1]} />
-      <HostSetting viewer={props.viewer} label="Souls gain" value={`${Math.round(M.soulScale * 100)}%`}
+      <HostSetting mine={mine} label="Souls gain" value={`${Math.round(M.soulScale * 100)}%`}
         change={changeSouls} atMin={M.soulScale <= SOUL_SCALE_MIN} atMax={M.soulScale >= SOUL_SCALE_MAX} />
-      <StartSoulsSetting viewer={props.viewer} />
-      <HostSetting viewer={props.viewer} label="Melee knockback" value={`${M.knockback}%`}
+      <StartSoulsSetting mine={mine} />
+      <HostSetting mine={mine} label="Melee knockback" value={`${M.knockback}%`}
         change={changeKnockback} atMin={M.knockback <= 0} atMax={M.knockback >= KNOCKBACK_PERCENT_MAX} />
-      <HostSetting viewer={props.viewer} label="Bonus round" value={M.bonusRound ? 'On' : 'Off'}
+      <HostSetting mine={mine} label="Bonus round" value={M.bonusRound ? 'On' : 'Off'}
         change={changeBonusRound} atMin={!M.bonusRound} atMax={M.bonusRound} />
     </panel>
   )
 }
 
+const STEP_SIZE = 36
+const TYPED_WIDTH = 106 // the typed souls box and its gap; the other rows keep the space so they line up
+
 function HostSetting(props: {
-  viewer: Member
+  mine: boolean
   label: string
   value: string
   change: (player: Player, steps: number) => void
@@ -175,28 +204,28 @@ function HostSetting(props: {
   atMax: boolean
   extra?: Child // shown to the host after the + button
 }) {
-  const h = host()
-  const mine = h === props.viewer
-  const step = (label: string, steps: number, off: boolean) => (
-    <button
-      disabled={off}
-      sound="UI.MainMenu.Activate"
-      hoverSound="UI.MainMenu.Hover"
-      onPress={(player) => props.change(player, steps)}
-      style={{ verticalAlign: 'center', width: 34, height: 30, borderRadius: 4, background: off ? '#2a313a' : '#ffffff1a', transition: 0.15 }}
-      hover={{ background: '#ffffff33' }}
-    >
-      <label style={{ fontSize: 18, bold: true, horizontalAlign: 'center', verticalAlign: 'center', color: off ? DIM : TEXT }}>{label}</label>
-    </button>
-  )
+  const step = (label: string, steps: number, off: boolean) =>
+    props.mine ? (
+      <button
+        disabled={off}
+        sound="UI.MainMenu.Activate"
+        hoverSound="UI.MainMenu.Hover"
+        onPress={(player) => props.change(player, steps)}
+        style={{ verticalAlign: 'center', width: STEP_SIZE, height: STEP_SIZE, borderRadius: 4, background: RAISED, borderWidth: 1, borderColor: off ? LIT : '#ffefd740', transition: 0.15 }}
+        hover={{ background: LIT }}
+      >
+        <label style={{ fontSize: 20, bold: true, horizontalAlign: 'center', verticalAlign: 'center', color: off ? DIM : TEXT }}>{label}</label>
+      </button>
+    ) : (
+      <panel style={{ width: STEP_SIZE, height: STEP_SIZE }} />
+    )
   return (
-    <panel style={{ flow: 'right', horizontalAlign: 'left', margin: [0, 0, 6, 0] }}>
-      <label style={{ verticalAlign: 'center', width: 140, fontSize: 15, color: DIM, margin: [0, 12, 0, 0] }}>{props.label}</label>
-      {mine ? step('−', -1, props.atMin) : null}
-      <label style={{ verticalAlign: 'center', width: 96, fontSize: 22, face: 'block', textAlign: 'center', color: GOLD }}>{props.value}</label>
-      {mine ? step('+', 1, props.atMax) : null}
-      {mine ? props.extra ?? null : null}
-      {mine || h === undefined ? null : <label style={{ verticalAlign: 'center', fontSize: 13, color: DIM, margin: [0, 0, 0, 12] }}>{`set by ${h.name}`}</label>}
+    <panel style={{ flow: 'right', height: 48 }}>
+      <label style={{ verticalAlign: 'center', width: 190, fontSize: 18, color: MUTED, margin: [0, 14, 0, 0] }}>{props.label}</label>
+      {step('−', -1, props.atMin)}
+      <label style={{ verticalAlign: 'center', width: 118, fontSize: 26, face: 'block', textAlign: 'center', color: GOLD }}>{props.value}</label>
+      {step('+', 1, props.atMax)}
+      {props.mine && props.extra !== undefined ? props.extra : <panel style={{ width: TYPED_WIDTH, height: STEP_SIZE }} />}
     </panel>
   )
 }
@@ -204,9 +233,9 @@ function HostSetting(props: {
 // Starting souls: - and + step through the usual amounts, and the host can also type any amount (such as
 // 5000, 5,000 or 5k) into the box. The box is never filled in from the mod, so nothing it sends back can
 // overwrite what is being typed. On Hyperline typed text doesn't reach the mod; the buttons do.
-function StartSoulsSetting(props: { viewer: Member }) {
+function StartSoulsSetting(props: { mine: boolean }) {
   return (
-    <HostSetting viewer={props.viewer} label="Starting souls" value={commas(M.startSouls)} change={changeStartSouls}
+    <HostSetting mine={props.mine} label="Starting souls" value={commas(M.startSouls)} change={changeStartSouls}
       atMin={M.startSouls <= 0} atMax={M.startSouls >= START_SOULS_MAX}
       extra={
         <entry
@@ -216,7 +245,7 @@ function StartSoulsSetting(props: { viewer: Member }) {
             const souls = parseSouls(text)
             if (souls !== undefined) setStartSouls(player, souls)
           }}
-          style={{ verticalAlign: 'center', width: 96, height: 30, fontSize: 15, color: TEXT, padding: [4, 8], margin: [0, 0, 0, 10], borderRadius: 4, background: '#ffffff1a' }}
+          style={{ verticalAlign: 'center', width: TYPED_WIDTH - 10, height: STEP_SIZE, fontSize: 15, color: TEXT, padding: [4, 10], margin: [0, 0, 0, 10], borderRadius: 4, background: PLATE, borderWidth: 1, borderColor: '#ffefd740' }}
         />
       }
     />
@@ -243,20 +272,30 @@ function ReadyButton(props: { viewer: Member }) {
       onPress={(player) => toggleReady(player)}
       style={{
         horizontalAlign: 'center',
-        width: 280,
-        padding: [12, 0],
+        width: 340,
+        height: 64,
         borderRadius: 4,
-        background: noTeam ? '#2a313a' : m.ready ? '#1b222b' : GOLD,
-        borderWidth: m.ready ? 2 : 0,
-        borderColor: '#ffffff40',
+        background: noTeam ? RAISED : m.ready ? RAISED : TEXT,
+        borderWidth: noTeam || m.ready ? 1 : 0,
+        borderColor: m.ready ? '#ffefd760' : LIT,
         transition: 0.15,
       }}
       hover={{ brightness: 1.15 }}
     >
-      <label style={{ fontSize: 18, face: 'block', uppercase: true, horizontalAlign: 'center', color: noTeam ? DIM : m.ready ? TEXT : '#151a20' }}>
-        {noTeam ? 'Pick a team' : m.ready ? 'Not ready' : 'Ready'}
+      <label style={{ fontSize: 26, face: 'block', uppercase: true, horizontalAlign: 'center', verticalAlign: 'center', color: noTeam ? DIM : m.ready ? TEXT : INK }}>
+        {noTeam ? 'Pick a team' : m.ready ? 'Not ready' : 'Ready up'}
       </label>
     </button>
+  )
+}
+
+/** TeamPanel is one team's side of the screen: its name, then its rows. */
+function TeamPanel(props: { team: number; viewer: Member; width: number; children?: Child }) {
+  const { team } = props
+  return (
+    <panel style={{ flow: 'down', width: props.width, height: 'fill', padding: [32, 28], borderRadius: 8, background: panelTint(team), borderWidth: 1, borderColor: `${edge(team)}55` }}>
+      {props.children}
+    </panel>
   )
 }
 
@@ -268,46 +307,52 @@ function TeamColumn(props: { team: number; viewer: Member }) {
   const full = list.length >= TEAM_SIZE
   const open = Math.max(0, TEAM_SIZE - list.length)
   return (
-    <panel style={{ flow: 'down', width: 'fill', margin: [0, 6], padding: 10, borderRadius: 6, background: `${c}${mine ? '26' : '12'}`, transition: 0.2 }}>
-      <panel style={{ flow: 'right', width: 'fill', margin: [2, 4, 8, 4] }}>
-        <label style={{ width: 'fill', fontSize: 18, face: 'block', uppercase: true, letterSpacing: 1, color: c }}>{patronName(team)}</label>
-        <label style={{ fontSize: 14, color: DIM }}>{`${list.length} / ${TEAM_SIZE}`}</label>
+    <TeamPanel team={team} viewer={viewer} width={500}>
+      <panel style={{ flow: 'right', width: 'fill', margin: [0, 0, 20, 0] }}>
+        <label style={{ width: 'fill', fontSize: 34, face: 'block', uppercase: true, letterSpacing: 1, color: c }}>{patronName(team)}</label>
+        <label style={{ verticalAlign: 'bottom', fontSize: 20, face: 'block', color: MUTED }}>{`${list.length} / ${TEAM_SIZE}`}</label>
       </panel>
       {list.map((m) => (
         <PlayerRow member={m} own={m === viewer} />
       ))}
       {Array.from({ length: open }, () => (
-        <panel style={{ width: 'fill', height: 38, margin: [3, 0], padding: [0, 10], borderRadius: 4, background: '#0000002e' }}>
-          <label style={{ verticalAlign: 'center', fontSize: 13, color: '#ffffff3a' }}>Open</label>
+        <panel style={{ width: 'fill', height: 64, margin: [0, 0, 10, 0], padding: [0, 18], borderRadius: 4, background: rowTint(team) }}>
+          <label style={{ verticalAlign: 'center', fontSize: 17, color: DIM }}>Open</label>
         </panel>
       ))}
-      <panel style={{ flow: 'right', horizontalAlign: 'center', height: 40, margin: [8, 0, 0, 0] }}>
+      <panel style={{ width: 'fill', height: 'fill' }} />
+      <panel style={{ flow: 'right', horizontalAlign: 'center', height: 48 }}>
         {mine || full ? null : (
           <button
             sound="UI.MainMenu.Activate"
             hoverSound="UI.MainMenu.Hover"
             onPress={(player) => chooseTeam(player, team)}
-            style={{ horizontalAlign: 'center', verticalAlign: 'center', padding: [6, 16], borderRadius: 4, borderWidth: 2, borderColor: c, background: '#00000040', transition: 0.15 }}
-            hover={{ background: `${c}40` }}
+            style={{ verticalAlign: 'center', height: 48, padding: [0, 22], borderRadius: 4, borderWidth: 2, borderColor: c, background: '#00000000', transition: 0.15 }}
+            hover={{ background: `${edge(team)}40` }}
           >
-            <label style={{ fontSize: 13, bold: true, color: c }}>Join this team</label>
+            <label style={{ verticalAlign: 'center', fontSize: 17, face: 'block', uppercase: true, color: c }}>Join this team</label>
           </button>
         )}
+        {mine ? (
+          <panel style={{ verticalAlign: 'center', height: 48, padding: [0, 22], borderRadius: 4, borderWidth: 1, borderColor: LIT, background: RAISED }}>
+            <label style={{ verticalAlign: 'center', fontSize: 17, face: 'block', uppercase: true, color: DIM }}>You are here</label>
+          </panel>
+        ) : null}
         {/* Bots: "+ bot" adds a bot to this team. */}
         {full ? null : (
           <button
             sound="UI.MainMenu.Activate"
             hoverSound="UI.MainMenu.Hover"
             onPress={() => addTestBot(team)}
-            style={{ verticalAlign: 'center', margin: [0, 0, 0, 8], padding: [6, 12], borderRadius: 4, borderWidth: 2, borderColor: '#ffffffaa', background: '#00000040', transition: 0.15 }}
-            hover={{ background: '#ffffff26' }}
+            style={{ verticalAlign: 'center', height: 48, margin: [0, 0, 0, 12], padding: [0, 22], borderRadius: 4, borderWidth: 1, borderColor: '#ffefd740', background: RAISED, transition: 0.15 }}
+            hover={{ background: LIT }}
           >
-            <label style={{ fontSize: 13, bold: true, color: TEXT }}>+ bot</label>
+            <label style={{ verticalAlign: 'center', fontSize: 17, face: 'block', uppercase: true, color: TEXT }}>+ Bot</label>
           </button>
         )}
-        {full && !mine ? <label style={{ verticalAlign: 'center', fontSize: 13, color: DIM }}>Team full</label> : null}
+        {full && !mine ? <label style={{ verticalAlign: 'center', fontSize: 17, color: DIM }}>Team full</label> : null}
       </panel>
-    </panel>
+    </TeamPanel>
   )
 }
 
@@ -315,31 +360,39 @@ function Avatar(props: { member: Member }) {
   const m = props.member
   return m.bot ? (
     // Bots: a badge in place of the Steam picture.
-    <panel style={{ width: 30, height: 22, verticalAlign: 'center', borderRadius: 3, background: '#ffffff1a' }}>
-      <label style={{ horizontalAlign: 'center', verticalAlign: 'center', fontSize: 10, bold: true, color: DIM }}>BOT</label>
+    <panel style={{ width: 40, height: 40, verticalAlign: 'center', borderRadius: 20, background: LIT }}>
+      <label style={{ horizontalAlign: 'center', verticalAlign: 'center', fontSize: 11, bold: true, color: DIM }}>BOT</label>
     </panel>
   ) : (
-    <avatar steamId={m.steamId} style={{ width: 26, height: 26, borderRadius: 13, verticalAlign: 'center' }} />
+    <avatar steamId={m.steamId} style={{ width: 40, height: 40, borderRadius: 20, verticalAlign: 'center' }} />
   )
 }
 
 function PlayerRow(props: { member: Member; own: boolean }) {
   const { member: m, own } = props
+  const team = m.team ?? AMBER
   return (
     <panel
-      style={{ flow: 'right', width: 'fill', height: 38, margin: [3, 0], padding: [0, 8], borderRadius: 4, background: '#0000004d', borderWidth: own ? 2 : 0, borderColor: GOLD }}
+      style={{ flow: 'right', width: 'fill', height: 64, margin: [0, 0, 10, 0], padding: [0, 16], borderRadius: 4, background: rowTint(team), borderWidth: 2, borderColor: own ? edge(team) : '#00000000' }}
     >
       <Avatar member={m} />
-      <label style={{ width: 'fill', verticalAlign: 'center', margin: [0, 0, 0, 10], fontSize: 15, bold: own, color: TEXT, noWrap: true, textOverflow: 'ellipsis' }}>
+      <label style={{ verticalAlign: 'center', maxWidth: 230, margin: [0, 0, 0, 14], fontSize: 18, bold: true, color: TEXT, noWrap: true, textOverflow: 'ellipsis' }}>
         {own ? `${m.name} (you)` : m.name}
       </label>
+      {host() === m ? <panel style={{ verticalAlign: 'center', margin: [0, 0, 0, 10] }}><Tag text="Host" tone={GOLD} /></panel> : null}
+      <panel style={{ width: 'fill', height: 10 }} />
       {m.bot ? (
         // Bots: "×" removes the bot.
-        <button onPress={() => removeTestBot(m)} style={{ verticalAlign: 'center', width: 24, height: 24, borderRadius: 3, background: '#ffffff14' }} hover={{ background: '#ff5a5a66' }}>
-          <label style={{ horizontalAlign: 'center', verticalAlign: 'center', fontSize: 13, bold: true, color: TEXT }}>×</label>
-        </button>
+        <panel style={{ flow: 'right', verticalAlign: 'center' }}>
+          <Tag text="Bot" tone={DIM} />
+          <button onPress={() => removeTestBot(m)} tooltip="Remove this bot" style={{ verticalAlign: 'center', width: 28, height: 28, margin: [0, 0, 0, 10], borderRadius: 4, background: RAISED }} hover={{ background: '#ff5a3d66' }}>
+            <label style={{ horizontalAlign: 'center', verticalAlign: 'center', fontSize: 15, bold: true, color: TEXT }}>×</label>
+          </button>
+        </panel>
+      ) : m.ready ? (
+        <Tag text="Ready" tone={GOOD} />
       ) : (
-        <label style={{ verticalAlign: 'center', fontSize: 13, color: m.ready ? GOOD : DIM }}>{m.ready ? 'Ready' : 'Waiting'}</label>
+        <label style={{ verticalAlign: 'center', fontSize: 15, color: DIM }}>Not ready</label>
       )}
     </panel>
   )
@@ -348,7 +401,7 @@ function PlayerRow(props: { member: Member; own: boolean }) {
 // --------------------------------------------------------------- heroes
 const PICKER_COLUMNS = 10
 // The hero list never changes, so its rows (by title) and the lookup by name are made once, not on every
-// redraw for every player.
+// redraw for every player. Each row is centred, so a short last row sits in the middle.
 const HERO_ROWS = chunk([...heroes].sort((a, b) => a.title.localeCompare(b.title)), PICKER_COLUMNS)
 const HERO_BY_NAME = new Map(heroes.map((h) => [h.name, h]))
 
@@ -375,55 +428,55 @@ function HeroPick(props: { viewer: Member }) {
         ? `Locked in · waiting for the others · ${pickTimeLeft()}s`
         : `Pick your hero · ${pickTimeLeft()}s`
   return (
-    <panel
-      enter={{ opacity: 0, translate: [0, 24] }}
-      style={{ flow: 'down', horizontalAlign: 'center', verticalAlign: 'center', padding: [14, 22, 14, 22], background: CARD, borderRadius: 8, boxShadow: { blur: 40, color: '#000000aa' } }}
-    >
-      <label style={{ fontSize: 34, face: 'block', uppercase: true, letterSpacing: 3, horizontalAlign: 'center', color: PURPLE }}>Shattered Arena</label>
-      <label style={{ fontSize: 18, bold: true, horizontalAlign: 'center', color: done || m.locked ? GOOD : GOLD, margin: [2, 0, 8, 0] }}>{status}</label>
-      <panel style={{ flow: 'right', width: 'fill', margin: [0, 0, 8, 0] }}>
-        <PickColumn team={AMBER} viewer={m} />
-        <PickColumn team={SAPPHIRE} viewer={m} />
+    <panel enter={{ opacity: 0 }} style={{ flow: 'right', width: 'fill', height: 'fill' }}>
+      <PickColumn team={AMBER} viewer={m} />
+      <panel style={{ flow: 'down', width: 'fill', verticalAlign: 'center', margin: [0, 36] }}>
+        <Title size={60} line={status} tone={done || m.locked ? GOOD : GOLD} />
+        {team === undefined ? null : (
+          <panel style={{ flow: 'down', horizontalAlign: 'center', margin: [28, 0, 0, 0] }}>
+            {HERO_ROWS.map((row) => (
+              <panel style={{ flow: 'right', horizontalAlign: 'center' }}>
+                {row.map((hero) => {
+                  const taken = locked.get(hero.name) // a teammate locked it in
+                  const mine = m.hero === hero.name
+                  const blocked = taken !== undefined || m.locked
+                  return (
+                    <button
+                      disabled={blocked}
+                      tooltip={taken === undefined ? hero.title : `${hero.title} (${taken.name} has it)`}
+                      hoverSound="UI.MainMenu.Hover"
+                      sound="UI.MainMenu.Activate"
+                      onPress={(player) => pickHero(player, hero.name)}
+                      style={{
+                        flow: 'down',
+                        saturation: taken !== undefined ? 0 : 1,
+                        width: 76,
+                        margin: 4,
+                        padding: 2,
+                        borderRadius: 4,
+                        background: mine ? '#fd736d33' : RAISED,
+                        borderWidth: 2,
+                        borderColor: mine ? '#fd736d' : '#00000000',
+                        opacity: taken !== undefined ? 0.3 : mine ? 1 : blocked ? 0.6 : 1,
+                        transition: 0.12,
+                      }}
+                      hover={{ background: LIT, brightness: 1.15 }}
+                    >
+                      <hero hero={hero.id} look="vertical" scaling="cover" style={{ width: 68, height: 84, borderRadius: 3 }} />
+                      <label style={{ fontSize: 12, color: mine ? TEXT : MUTED, horizontalAlign: 'center', margin: [3, 0, 1, 0], noWrap: true, textOverflow: 'shrink' }}>{hero.title}</label>
+                    </button>
+                  )
+                })}
+              </panel>
+            ))}
+          </panel>
+        )}
+        {team === undefined ? null : <LockButton viewer={m} />}
+        {team === undefined ? null : (
+          <label style={{ fontSize: 16, horizontalAlign: 'center', color: MUTED, margin: [12, 0, 0, 0] }}>Faded heroes are taken by a teammate</label>
+        )}
       </panel>
-      {team === undefined
-        ? null
-        : HERO_ROWS.map((row) => (
-            <panel style={{ flow: 'right', horizontalAlign: 'center' }}>
-              {row.map((hero) => {
-                const taken = locked.get(hero.name) // a teammate locked it in
-                const mine = m.hero === hero.name
-                const c = color(team)
-                const blocked = taken !== undefined || m.locked
-                return (
-                  <button
-                    disabled={blocked}
-                    tooltip={taken === undefined ? hero.title : `${hero.title} (${taken.name} has it)`}
-                    hoverSound="UI.MainMenu.Hover"
-                    sound="UI.MainMenu.Activate"
-                    onPress={(player) => pickHero(player, hero.name)}
-                    style={{
-                      flow: 'down',
-                      saturation: taken !== undefined ? 0 : 1,
-                      width: 68,
-                      margin: 2,
-                      padding: 3,
-                      borderRadius: 4,
-                      background: mine ? `${c}55` : '#ffffff0f',
-                      borderWidth: 2,
-                      borderColor: mine ? c : '#00000000',
-                      opacity: taken !== undefined ? 0.25 : mine ? 1 : blocked ? 0.6 : 1,
-                      transition: 0.12,
-                    }}
-                    hover={{ background: `${c}33`, brightness: 1.15 }}
-                  >
-                    <hero hero={hero.id} look="vertical" scaling="cover" style={{ width: 58, height: 72, borderRadius: 3 }} />
-                    <label style={{ fontSize: 11, color: mine ? TEXT : DIM, horizontalAlign: 'center', margin: [3, 0, 0, 0], noWrap: true, textOverflow: 'shrink' }}>{hero.title}</label>
-                  </button>
-                )
-              })}
-            </panel>
-          ))}
-      {team === undefined ? null : <LockButton viewer={m} />}
+      <PickColumn team={SAPPHIRE} viewer={m} />
     </panel>
   )
 }
@@ -438,42 +491,44 @@ function LockButton(props: { viewer: Member }) {
       sound="UI.MainMenu.Activate"
       hoverSound="UI.MainMenu.Hover"
       onPress={(player) => lockIn(player)}
-      style={{ horizontalAlign: 'center', width: 320, margin: [10, 0, 0, 0], padding: [10, 0], borderRadius: 4, background: none ? '#2a313a' : m.locked ? '#1b222b' : GOLD, borderWidth: m.locked ? 2 : 0, borderColor: GOOD, transition: 0.15 }}
+      style={{ horizontalAlign: 'center', width: 400, height: 64, margin: [28, 0, 0, 0], borderRadius: 4, background: none || m.locked ? RAISED : TEXT, borderWidth: m.locked ? 2 : none ? 1 : 0, borderColor: m.locked ? GOOD : LIT, transition: 0.15 }}
       hover={{ brightness: 1.15 }}
     >
-      <label style={{ fontSize: 18, face: 'block', uppercase: true, horizontalAlign: 'center', color: none ? DIM : m.locked ? GOOD : '#151a20' }}>{text}</label>
+      <label style={{ fontSize: 26, face: 'block', uppercase: true, horizontalAlign: 'center', verticalAlign: 'center', color: none ? DIM : m.locked ? GOOD : INK }}>{text}</label>
     </button>
   )
 }
 
-// One team's players. Locked picks show to everyone; your teammates' selections show to your team, so
-// you can see what they are about to lock in.
+// One team's players. Locked picks show to everyone, with the hero's portrait and name by the player's
+// name; your teammates' selections show to your team, faded, so you can see what they are about to lock in.
 function PickColumn(props: { team: number; viewer: Member }) {
   const { team, viewer } = props
-  const c = color(team)
   return (
-    <panel style={{ flow: 'down', width: 'fill', margin: [0, 6], padding: 8, borderRadius: 6, background: `${c}${viewer.team === team ? '26' : '12'}` }}>
-      <label style={{ fontSize: 16, face: 'block', uppercase: true, letterSpacing: 1, color: c, margin: [0, 4, 4, 4] }}>{patronName(team)}</label>
+    <TeamPanel team={team} viewer={viewer} width={420}>
+      <label style={{ fontSize: 32, face: 'block', uppercase: true, letterSpacing: 1, color: color(team), margin: [0, 0, 20, 0] }}>{patronName(team)}</label>
       {teamMembers(team).map((m) => {
         const shown = m.hero !== undefined && (m.locked || m === viewer || viewer.team === team)
         const hero = shown && m.hero !== undefined ? HERO_BY_NAME.get(m.hero) : undefined
         return (
-          <panel style={{ flow: 'right', width: 'fill', height: 32, margin: [1, 0], padding: [0, 8], borderRadius: 4, background: '#0000004d', borderWidth: m === viewer ? 2 : 0, borderColor: GOLD }}>
+          <panel style={{ flow: 'right', width: 'fill', height: 76, margin: [0, 0, 10, 0], padding: [0, 14, 0, 8], borderRadius: 4, background: rowTint(team), borderWidth: 2, borderColor: m === viewer ? edge(team) : '#00000000' }}>
             {hero === undefined ? (
-              <panel style={{ width: 22, height: 28, verticalAlign: 'center', borderRadius: 3, background: '#ffffff14' }} />
+              <panel style={{ width: 56, height: 56, verticalAlign: 'center', borderRadius: 4, background: RAISED, borderWidth: 1, borderColor: '#ffefd733' }} />
             ) : (
-              <hero hero={hero.id} look="vertical" scaling="cover" style={{ width: 22, height: 28, verticalAlign: 'center', borderRadius: 3, opacity: m.locked ? 1 : 0.5 }} />
+              <hero hero={hero.id} look="small" scaling="cover"
+                style={{ width: 56, height: 56, verticalAlign: 'center', borderRadius: 4, borderWidth: m.locked ? 2 : 0, borderColor: edge(team), opacity: m.locked ? 1 : 0.5 }} />
             )}
-            <label style={{ width: 'fill', verticalAlign: 'center', margin: [0, 0, 0, 10], fontSize: 14, color: TEXT, noWrap: true, textOverflow: 'ellipsis' }}>
+            <label style={{ width: 'fill', verticalAlign: 'center', margin: [0, 10, 0, 14], fontSize: 18, bold: true, color: TEXT, noWrap: true, textOverflow: 'ellipsis' }}>
               {`${m.name}${m === viewer ? ' (you)' : ''}`}
             </label>
-            <label style={{ verticalAlign: 'center', fontSize: 13, color: m.locked ? GOOD : DIM }}>
-              {m.locked ? (hero?.title ?? 'Locked') : hero !== undefined ? `${hero.title}?` : 'Picking…'}
-            </label>
+            {m.locked ? (
+              <label style={{ verticalAlign: 'center', fontSize: 16, face: 'block', uppercase: true, color: TEXT }}>{hero?.title ?? 'Locked'}</label>
+            ) : (
+              <label style={{ verticalAlign: 'center', fontSize: 16, color: hero !== undefined ? MUTED : DIM }}>{hero !== undefined ? `${hero.title}…` : 'Picking…'}</label>
+            )}
           </panel>
         )
       })}
-    </panel>
+    </TeamPanel>
   )
 }
 
@@ -485,8 +540,6 @@ function chunk<T>(list: readonly T[], size: number): T[][] {
 }
 
 // ---------------------------------------------------------------- match
-// The ticket strip sits under the game's own top bar (which keeps the clock and heroes): both
-// teams' tickets with the viewer's team first. (Kills show in the game's own kill feed.)
 // The cinematic frame: black bars along the top and bottom, with a title and a line under it near the bottom.
 function Cinematic(props: { title: string; tone: string; line?: string; lineShown?: boolean }) {
   return (
@@ -528,23 +581,164 @@ function Intro(props: { viewer: Member }) {
 }
 
 function Live(props: { viewer: Member; build: number }) {
-  const m = props.viewer
-  const mine = m.team === SAPPHIRE ? SAPPHIRE : AMBER
-  const theirs = mine === AMBER ? SAPPHIRE : AMBER
   return (
     <panel key={`live-${props.build}`} style={{ width: '100%', height: '100%' }}>
-      <TopStrip heading="Tickets" keepTeamBar={true}>
-        <Score points={[T.tickets[mine], T.tickets[theirs]]} tones={[mine === AMBER ? 'amber' : 'sapphire', theirs === AMBER ? 'amber' : 'sapphire']} />
-      </TopStrip>
+      <TopBar viewer={props.viewer} />
+      <RiftBars viewer={props.viewer} />
       <Count text={M.clock - M.liveAt < GO_SECONDS ? 'GO!' : undefined} />
     </panel>
   )
 }
 
-// The bonus round: each team's heroes still standing, the viewer's own first, and the seconds left.
-function BonusRound(props: { viewer: Member }) {
+// ---------------------------------------------------------------- the top bar
+// The game's own top bar is hidden (match.ts): its team counters show team souls, which mean nothing here.
+// In its place: the viewer's team on the left and the other on the right, each hero in a ring of its
+// team's colour, greyed with the seconds to its respawn while dead, with a dot under it that lights gold
+// while its ultimate is ready; in the middle the match clock and the tickets, or in the bonus round its
+// timer and the heroes left.
+const PORTRAIT = 60
+const RING = 3
+const HERO_STEP = 74 // a hero's width in the bar, with the gap
+const ULT_SLOT = 3
+const ULT_CHECK_SECONDS = 1 // player.abilities() can take 20 ms: each hero's is read once a second at most
+
+interface Watch {
+  alive: boolean
+  diedAt: number
+  ultReady: boolean
+  ultCheckAt: number
+}
+const watched = new WeakMap<Member, Watch>()
+
+/** watch keeps each hero's alive state, when it died, and whether its ultimate is ready. */
+function watch(m: Member, index: number): Watch {
+  let w = watched.get(m)
+  if (w === undefined) watched.set(m, (w = { alive: true, diedAt: 0, ultReady: false, ultCheckAt: M.clock + index * 0.08 }))
+  const pawn = cast.pawn(m.player)
+  const alive = pawn !== undefined && pawn.health > 0
+  if (w.alive && !alive) w.diedAt = M.clock
+  w.alive = alive
+  if (M.clock >= w.ultCheckAt) {
+    w.ultCheckAt = M.clock + ULT_CHECK_SECONDS
+    const ult = alive ? m.player.abilities().find((a) => a.slot === ULT_SLOT) : undefined
+    // Cooldowns are kept in the game's time (M.lastFrame), not the mod's own clock (M.clock).
+    w.ultReady = ult !== undefined && (ult.upgrades & 1) !== 0 && ult.cooldownEnd <= (M.lastFrame ?? 0)
+  }
+  return w
+}
+
+function TopBar(props: { viewer: Member; bonus?: boolean }) {
+  const v = props.viewer
+  const mine = v.team === SAPPHIRE ? SAPPHIRE : AMBER
+  const theirs = mine === AMBER ? SAPPHIRE : AMBER
+  const all = members()
+  // The viewer's team: the viewer nearest the middle, then the rest outward. The other team outward too.
+  const own = teamMembers(mine).filter((m) => m.hero !== undefined)
+  own.sort((a, b) => (a === v ? -1 : b === v ? 1 : 0))
+  const other = teamMembers(theirs).filter((m) => m.hero !== undefined)
+  const heroes = (list: Member[], team: number, reversed: boolean) => {
+    const cells = list.map((m) => <BarHero member={m} team={team} you={m === v} bonus={props.bonus === true} w={watch(m, all.indexOf(m))} />)
+    return <panel style={{ flow: 'right', width: HERO_STEP * TEAM_SIZE }}>{reversed ? cells.reverse() : cells}</panel>
+  }
+  const clock = Math.max(0, Math.floor(M.clock - M.liveAt))
+  const left = heroes(own, mine, true)
+  return (
+    <panel style={{ flow: 'right', horizontalAlign: 'center', margin: [8, 0, 0, 0] }}>
+      <panel style={{ flow: 'right', width: HERO_STEP * TEAM_SIZE }}>
+        <panel style={{ width: HERO_STEP * (TEAM_SIZE - own.length), height: 10 }} />
+        {left}
+      </panel>
+      <panel style={{ flow: 'down', width: 300, height: 104, margin: [0, 16], padding: [8, 0], borderRadius: 8, background: '#000000d9', borderWidth: 1, borderColor: LIT }}>
+        {props.bonus === true ? (
+          <label style={{ horizontalAlign: 'center', fontSize: 17, face: 'block', uppercase: true, color: GOLD }}>
+            {B.stage === 'fight' ? `Bonus round  ${clockText(secondsUntil(B.endsAt))}` : 'Bonus round'}
+          </label>
+        ) : (
+          <label style={{ horizontalAlign: 'center', fontSize: 17, face: 'block', color: TEXT }}>{clockText(clock)}</label>
+        )}
+        <panel style={{ flow: 'right', horizontalAlign: 'center', margin: [2, 0, 0, 0] }}>
+          <label style={{ width: 110, textAlign: 'right', fontSize: 44, face: 'block', color: color(mine) }}>{`${props.bonus === true ? B.alive[mine] : T.tickets[mine]}`}</label>
+          <label style={{ width: 36, textAlign: 'center', fontSize: 40, face: 'block', color: MUTED }}>:</label>
+          <label style={{ width: 110, textAlign: 'left', fontSize: 44, face: 'block', color: color(theirs) }}>{`${props.bonus === true ? B.alive[theirs] : T.tickets[theirs]}`}</label>
+        </panel>
+        <label style={{ horizontalAlign: 'center', fontSize: 13, face: 'block', uppercase: true, letterSpacing: 1, color: MUTED }}>{props.bonus === true ? 'Heroes left' : 'Tickets'}</label>
+      </panel>
+      {heroes(other, theirs, false)}
+    </panel>
+  )
+}
+
+function BarHero(props: { member: Member; team: number; you: boolean; bonus: boolean; w: Watch }) {
+  const { member: m, w } = props
+  const hero = m.hero === undefined ? undefined : HERO_BY_NAME.get(m.hero)
+  const respawn = Math.ceil(w.diedAt + M.respawnSeconds - M.clock)
+  const size = PORTRAIT + RING * 2
+  return (
+    <panel style={{ flow: 'down', width: HERO_STEP }}>
+      <panel style={{ horizontalAlign: 'center', width: size, height: size, padding: RING, borderRadius: size / 2, background: edge(props.team) }}>
+        {hero === undefined ? null : (
+          <hero hero={hero.id} look="small" scaling="cover" tooltip={`${m.name} · ${hero.title}`}
+            style={{ width: PORTRAIT, height: PORTRAIT, borderRadius: PORTRAIT / 2, saturation: w.alive ? 1 : 0, brightness: w.alive ? 1 : 0.55 }} />
+        )}
+        {!w.alive && !props.bonus && respawn > 0 ? (
+          <label style={{ horizontalAlign: 'center', verticalAlign: 'center', fontSize: 26, face: 'block', color: TEXT }}>{`${respawn}`}</label>
+        ) : null}
+      </panel>
+      {props.bonus ? (
+        <panel style={{ height: 18, margin: [6, 0, 0, 0] }} />
+      ) : (
+        <panel style={{ horizontalAlign: 'center', width: 18, height: 18, margin: [6, 0, 0, 0], borderRadius: 9,
+          background: w.ultReady ? GOLD : '#10130dcc', borderWidth: w.ultReady ? 0 : 2, borderColor: DIM }}>
+          {w.ultReady ? <panel style={{ horizontalAlign: 'center', verticalAlign: 'center', width: 6, height: 6, borderRadius: 3, background: INK }} /> : null}
+        </panel>
+      )}
+      {props.you ? <label style={{ horizontalAlign: 'center', fontSize: 11, face: 'block', uppercase: true, color: TEXT, margin: [3, 0, 0, 0] }}>You</label> : null}
+    </panel>
+  )
+}
+
+/** clockText writes seconds as m:ss. */
+function clockText(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  return `${Math.floor(s / 60)}:${`${s % 60}`.padStart(2, '0')}`
+}
+
+// ---------------------------------------------------------------- the rift bars
+// Bottom right, during the match only: each team's progress to its next rift wave (one notch for each
+// enemy death, RIFT_KILLS to a wave), the viewer's team first; the colours tell them apart.
+const RIFT_TRACK = 240
+
+function RiftBars(props: { viewer: Member }) {
   const mine = props.viewer.team === SAPPHIRE ? SAPPHIRE : AMBER
   const theirs = mine === AMBER ? SAPPHIRE : AMBER
+  const bar = (team: number) => {
+    const n = riftProgress(team)
+    return (
+      <panel style={{ flow: 'down', width: 50 }}>
+        <panel style={{ horizontalAlign: 'center', width: 22, height: RIFT_TRACK, borderRadius: 4, background: RAISED, borderWidth: 1, borderColor: '#3c3a34' }}>
+          <panel style={{ verticalAlign: 'bottom', horizontalAlign: 'center', width: 16, height: Math.round(((RIFT_TRACK - 6) * n) / RIFT_KILLS), margin: [0, 0, 3, 0], borderRadius: 3, background: edge(team), transition: 0.3 }} />
+          {Array.from({ length: RIFT_KILLS - 1 }, (_, i) => (
+            <panel style={{ verticalAlign: 'bottom', horizontalAlign: 'center', width: 18, height: 1, margin: [0, 0, Math.round((RIFT_TRACK * (i + 1)) / RIFT_KILLS), 0], background: '#000000a0' }} />
+          ))}
+        </panel>
+        <label style={{ horizontalAlign: 'center', fontSize: 14, face: 'block', color: color(team), margin: [8, 0, 0, 0] }}>{`${n}/${RIFT_KILLS}`}</label>
+      </panel>
+    )
+  }
+  return (
+    <panel style={{ flow: 'down', horizontalAlign: 'right', verticalAlign: 'bottom', width: 110, margin: [0, 20, 8, 0], padding: [12, 5, 10, 5], borderRadius: 8, background: '#000000d9', borderWidth: 1, borderColor: LIT }}>
+      <label style={{ horizontalAlign: 'center', fontSize: 16, face: 'block', uppercase: true, color: '#cd96ff' }}>Rift</label>
+      <label style={{ horizontalAlign: 'center', fontSize: 11, face: 'block', uppercase: true, color: MUTED, margin: [0, 0, 12, 0] }}>Minions</label>
+      <panel style={{ flow: 'right', horizontalAlign: 'center' }}>
+        {bar(mine)}
+        {bar(theirs)}
+      </panel>
+    </panel>
+  )
+}
+
+// The bonus round: the top bar with each team's heroes still standing and the seconds left (no rift bars).
+function BonusRound(props: { viewer: Member }) {
   // The countdown to the fight, then GO! for a moment.
   const count = B.stage === 'countdown' ? `${Math.max(1, secondsUntil(B.stageEnds))}` : B.stage === 'fight' && M.clock - B.foughtAt < GO_SECONDS ? 'GO!' : undefined
   if (B.stage === 'victory') {
@@ -565,16 +759,19 @@ function BonusRound(props: { viewer: Member }) {
   }
   return (
     <panel key="bonus" style={{ width: '100%', height: '100%' }}>
-      <TopStrip heading={B.stage === 'fight' ? `Bonus round: ${secondsUntil(B.endsAt)}` : 'Bonus round'} keepTeamBar={true}>
-        <Score points={[B.alive[mine], B.alive[theirs]]} tones={[mine === AMBER ? 'amber' : 'sapphire', theirs === AMBER ? 'amber' : 'sapphire']} />
-      </TopStrip>
+      <TopBar viewer={props.viewer} bonus={true} />
       <Count text={count} />
     </panel>
   )
 }
 
-// Results columns after the player's name: label and width.
-const STAT_COLUMNS: readonly [string, number][] = [['K / D / A', 110], ['Pit throws', 90], ['Hero damage', 110], ['Net worth', 100]]
+// The results columns: the player (name, hero icon, MVP), then the stats, then the items. The team banners
+// use the same columns, so each team total sits over the column it adds up: kills over K / D / A, pit
+// kills over pit throws, and tickets across hero damage and net worth.
+const COL = { player: 390, kda: 130, throws: 110, damage: 130, worth: 120 }
+const COL_GAP = 16
+const MAX_ITEMS = 16
+const SLOT_TINT = { weapon: '#c97a2c', vitality: '#5fa84a', spirit: '#9a62d6' }
 
 function Results(props: { viewer: Member }) {
   const m = props.viewer
@@ -582,40 +779,58 @@ function Results(props: { viewer: Member }) {
   const won = m.team === w
   const title = m.team === undefined ? `${patronName(w)} wins` : won ? 'Victory' : 'Defeat'
   const rows = statRows()
+  const cell = (width: number, child: Child) => <panel style={{ width, height: 'fill', margin: [0, COL_GAP, 0, 0] }}>{child}</panel>
+  const total = (value: number, label: string, tone: string) => (
+    <panel style={{ flow: 'right', verticalAlign: 'center' }}>
+      <label style={{ verticalAlign: 'bottom', fontSize: 26, face: 'block', color: tone }}>{`${value}`}</label>
+      <label style={{ verticalAlign: 'bottom', fontSize: 14, face: 'block', uppercase: true, color: MUTED, margin: [0, 0, 3, 8] }}>{label}</label>
+    </panel>
+  )
   const team = (t: number) => (
-    <panel style={{ flow: 'down', width: 'fill', margin: [6, 0, 0, 0] }}>
-      <panel style={{ flow: 'right', width: 'fill', padding: [8, 12], borderRadius: 4, background: `${color(t)}22` }}>
-        <label style={{ width: 'fill', fontSize: 18, face: 'block', uppercase: true, color: color(t) }}>{patronName(t)}</label>
-        <label style={{ fontSize: 15, color: TEXT, margin: [0, 18, 0, 0] }}>{`${T.tickets[t]} tickets`}</label>
-        <label style={{ fontSize: 15, color: DIM, margin: [0, 18, 0, 0] }}>{`${T.heroKills[t]} kills`}</label>
-        <label style={{ fontSize: 15, color: PURPLE }}>{`${T.pitKills[t]} pit kills`}</label>
+    <panel style={{ flow: 'down', width: 'fill' }}>
+      <panel style={{ flow: 'right', width: 'fill', height: 56, margin: [10, 0, 0, 0], padding: [0, 20], borderRadius: 4, background: panelTint(t), borderWidth: 1, borderColor: edge(t) }}>
+        {cell(COL.player, <label style={{ verticalAlign: 'center', fontSize: 26, face: 'block', uppercase: true, color: color(t) }}>{patronName(t)}</label>)}
+        {cell(COL.kda, total(T.heroKills[t], 'kills', TEXT))}
+        {cell(COL.throws, total(T.pitKills[t], 'pit kills', PURPLE))}
+        {cell(COL.damage + COL_GAP + COL.worth, <panel style={{ horizontalAlign: 'center', verticalAlign: 'center' }}>{total(T.tickets[t], 'tickets', GOLD)}</panel>)}
       </panel>
       {rows.filter((r) => r.team === t).map((r) => <StatLine row={r} you={r.member === m} />)}
     </panel>
   )
+  const head = (width: number, text: string) => cell(width, <label style={{ fontSize: 14, face: 'block', uppercase: true, color: MUTED }}>{text}</label>)
   return (
-    <panel style={{ width: '100%', height: '100%', gradient: { shape: 'radial', colors: ['#0a0f1640', '#03050add'] } }}>
-      <panel
-        enter={{ opacity: 0, translate: [0, 24] }}
-        style={{ flow: 'down', horizontalAlign: 'center', verticalAlign: 'center', width: 860, padding: [26, 28, 24, 28], background: CARD, borderRadius: 8, boxShadow: { blur: 40, color: '#000000aa' } }}
-      >
-        <label style={{ fontSize: m.team === undefined ? 36 : 52, face: 'block', uppercase: true, letterSpacing: 3, horizontalAlign: 'center', color: won || m.team === undefined ? GOLD : '#ff6060' }}>{title}</label>
-        <label style={{ fontSize: 15, horizontalAlign: 'center', color: DIM, margin: [2, 0, M.bonusWinner === undefined ? 14 : 2, 0] }}>{`${patronName(w)} drained the enemy tickets`}</label>
-        {M.bonusWinner === undefined ? undefined : (
-          <label style={{ fontSize: 15, horizontalAlign: 'center', color: PURPLE, margin: [0, 0, 14, 0] }}>
-            {M.bonusWinner === 'draw' ? 'Bonus round: a draw' : `Bonus round: ${patronName(M.bonusWinner)} was the last team standing`}
-          </label>
-        )}
-        <panel style={{ flow: 'right', width: 'fill', padding: [0, 12] }}>
-          <label style={{ width: 'fill', fontSize: 12, uppercase: true, color: DIM }}>Player</label>
-          {STAT_COLUMNS.map(([label, width]) => (
-            <label style={{ width, fontSize: 12, uppercase: true, horizontalAlign: 'right', color: DIM }}>{label}</label>
-          ))}
-        </panel>
-        {team(w)}
-        {team(w === AMBER ? SAPPHIRE : AMBER)}
-        <label style={{ fontSize: 14, horizontalAlign: 'center', color: DIM, margin: [16, 0, 0, 0] }}>{`Back to team select in ${secondsUntil(M.resultsEnd)}`}</label>
+    <panel style={{ width: '100%', height: '100%', background: BLACK }}>
+    <panel enter={{ opacity: 0 }} style={{ flow: 'down', width: 'fill', height: 'fill', margin: [44, 80, 36, 80] }}>
+      <label style={{ fontSize: m.team === undefined ? 72 : 96, face: 'block', uppercase: true, letterSpacing: 6, horizontalAlign: 'center', color: won || m.team === undefined ? GOLD : BAD }}>{title}</label>
+      <panel style={{ flow: 'right', width: 'fill', margin: [28, 0, 0, 0], padding: [0, 20] }}>
+        {head(COL.player, 'Player')}
+        {head(COL.kda, 'K / D / A')}
+        {head(COL.throws, 'Pit throws')}
+        {head(COL.damage, 'Hero damage')}
+        {head(COL.worth, 'Net worth')}
+        <label style={{ fontSize: 14, face: 'block', uppercase: true, color: MUTED }}>Items</label>
       </panel>
+      {team(w)}
+      {team(w === AMBER ? SAPPHIRE : AMBER)}
+      <panel style={{ width: 'fill', height: 'fill' }} />
+      <BonusLine viewer={m} />
+      <label style={{ fontSize: 17, horizontalAlign: 'center', color: MUTED, margin: [18, 0, 0, 0] }}>{`Back to team select in ${secondsUntil(M.resultsEnd)}`}</label>
+    </panel>
+    </panel>
+  )
+}
+
+// Whether the viewer's team won the bonus round. Nothing shows when there was no bonus round.
+function BonusLine(props: { viewer: Member }) {
+  const b = M.bonusWinner
+  if (b === undefined) return <panel />
+  const t = props.viewer.team
+  const [text, tone] =
+    b === 'draw' ? ['Draw', MUTED] : t === undefined ? [`${patronName(b)} won`, color(b)] : t === b ? ['Won', GOOD] : ['Lost', BAD]
+  return (
+    <panel style={{ flow: 'down', horizontalAlign: 'center' }}>
+      <label style={{ fontSize: 18, face: 'block', uppercase: true, letterSpacing: 3, horizontalAlign: 'center', color: MUTED }}>Bonus round</label>
+      <label style={{ fontSize: t === undefined ? 36 : 48, face: 'block', uppercase: true, horizontalAlign: 'center', color: tone, margin: [6, 0, 0, 0] }}>{text}</label>
     </panel>
   )
 }
@@ -623,23 +838,33 @@ function Results(props: { viewer: Member }) {
 // One player's line on the results card. The viewer's own line is highlighted.
 function StatLine(props: { row: StatRow; you: boolean }) {
   const r = props.row
+  const hero = r.hero === undefined ? undefined : HERO_BY_NAME.get(r.hero)
   const cell = (text: string, width: number, tint = TEXT) => (
-    <label style={{ width, fontSize: 15, horizontalAlign: 'right', color: tint }}>{text}</label>
+    <label style={{ width, verticalAlign: 'center', fontSize: 18, color: tint, margin: [0, COL_GAP, 0, 0] }}>{text}</label>
   )
-  const [kda, throws, damage, worth] = STAT_COLUMNS.map(([, width]) => width)
   return (
-    <panel style={{ flow: 'right', width: 'fill', padding: [5, 12], margin: [2, 0, 0, 0], borderRadius: 3, background: props.you ? '#ffffff14' : '#00000000' }}>
-      <panel style={{ flow: 'right', width: 'fill' }}>
-        <label style={{ verticalAlign: 'center', fontSize: 15, bold: props.you, color: TEXT }}>{r.name}</label>
-        <label style={{ verticalAlign: 'center', fontSize: 13, color: DIM, margin: [0, 0, 0, 8] }}>{r.hero === undefined ? '' : heroTitle(r.hero)}</label>
-        {r.mvp ? (
-          <label style={{ verticalAlign: 'center', fontSize: 12, bold: true, color: '#000000', background: GOLD, borderRadius: 3, padding: [1, 6], margin: [0, 0, 0, 8] }}>MVP</label>
-        ) : null}
+    <panel style={{ flow: 'down', width: 'fill' }}>
+    <panel style={{ flow: 'right', width: 'fill', height: 45, padding: [0, 20], background: props.you ? LIT : '#00000000' }}>
+      <panel style={{ flow: 'right', width: COL.player, height: 'fill', margin: [0, COL_GAP, 0, 0] }}>
+        <label style={{ verticalAlign: 'center', maxWidth: 230, fontSize: 18, bold: props.you, color: TEXT, noWrap: true, textOverflow: 'ellipsis' }}>{r.name}</label>
+        {hero === undefined ? null : (
+          <hero hero={hero.id} look="small" scaling="cover" tooltip={hero.title}
+            style={{ width: 34, height: 34, verticalAlign: 'center', margin: [0, 0, 0, 12], borderRadius: 4, borderWidth: 1, borderColor: LIT }} />
+        )}
+        {r.mvp ? <panel style={{ verticalAlign: 'center', margin: [0, 0, 0, 10] }}><Tag text="MVP" tone={GOLD} filled={true} /></panel> : null}
       </panel>
-      {r.scored ? cell(`${r.kills} / ${r.deaths} / ${r.assists}`, kda) : cell('–', kda, DIM)}
-      {cell(`${r.pitThrows}`, throws, r.pitThrows > 0 ? PURPLE : DIM)}
-      {r.scored ? cell(short(r.damage), damage) : cell('–', damage, DIM)}
-      {r.scored ? cell(short(r.netWorth), worth, GOLD) : cell('–', worth, DIM)}
+      {r.scored ? cell(`${r.kills} / ${r.deaths} / ${r.assists}`, COL.kda) : cell('–', COL.kda, DIM)}
+      {cell(`${r.pitThrows}`, COL.throws, r.pitThrows > 0 ? PURPLE : MUTED)}
+      {r.scored ? cell(short(r.damage), COL.damage) : cell('–', COL.damage, DIM)}
+      {r.scored ? cell(short(r.netWorth), COL.worth, GOLD) : cell('–', COL.worth, DIM)}
+      <panel style={{ flow: 'right', verticalAlign: 'center' }}>
+        {r.items.slice(0, MAX_ITEMS).map((it) => (
+          <image src={it.icon} item={it.name} scaling="fit"
+            style={{ width: 26, height: 26, margin: [0, 3, 0, 0], padding: 2, borderRadius: 3, background: `${SLOT_TINT[it.slot]}33`, borderWidth: 1, borderColor: SLOT_TINT[it.slot] }} />
+        ))}
+      </panel>
+    </panel>
+    <panel style={{ width: 'fill', height: 1, background: LIT }} />
     </panel>
   )
 }

@@ -1,6 +1,9 @@
 // Each player's match, for the results card: kills, deaths, assists, damage to heroes and net worth from
 // the game's scoreboard (counted from when the match started, so team select doesn't count), and the pit
-// throws the mod counts itself. The card shows what was recorded when the match ended.
+// throws the mod counts itself, and the items each hero holds. The card shows what was recorded when the
+// match ended.
+import { item, type Item } from 'modlock'
+
 import { cast, type Member, members } from './match'
 
 export interface StatRow {
@@ -16,6 +19,7 @@ export interface StatRow {
   damage: number
   netWorth: number
   pitThrows: number
+  items: readonly Item[] // weapon, then vitality, then spirit; the highest tier first in each
   mvp: boolean
 }
 
@@ -71,6 +75,7 @@ export function statsEnd(): void {
       damage: s === undefined ? 0 : Math.max(0, Math.round(s.heroDamage - from.damage)),
       netWorth: s?.netWorth ?? 0,
       pitThrows: throws.get(m) ?? 0,
+      items: heldItems(m),
       mvp: false,
     })
   }
@@ -84,6 +89,18 @@ export function statsEnd(): void {
   if (best !== undefined) best.mvp = true
   // Most kills first within each team.
   rows.sort((a, b) => b.kills - a.kills || b.assists - a.assists || a.deaths - b.deaths)
+}
+
+const SLOT_ORDER = { weapon: 0, vitality: 1, spirit: 2 }
+
+/** heldItems lists the shop items the player's hero holds, in shop order. */
+function heldItems(m: Member): Item[] {
+  const held: Item[] = []
+  for (const a of m.player.abilities()) {
+    const it = item(a.name)
+    if (it !== undefined) held.push(it)
+  }
+  return held.sort((a, b) => SLOT_ORDER[a.slot] - SLOT_ORDER[b.slot] || b.tier - a.tier)
 }
 
 function beats(a: number[], b: number[]): boolean {

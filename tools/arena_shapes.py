@@ -51,9 +51,11 @@ SKY_Z = 1000
 # ---------------------------------------------------------------- pits
 # Round 2 (8 Nov 2026, from the user's marked-up preview). Each pit is an ellipse or a capsule, in map
 # units; the map is symmetric both ways, so each is listed once with the mirrors it gets.
-def _side_pit(width=520, beyond=150, y_max=2780, n=40):
+def _side_pit(width=520, beyond=150, y_max=2180, n=40):
     """The long pit along the outer wall on the +x side (round 3: the three side pits joined), from
-    y = -y_max to y_max, width units in from the wall's inside edge and beyond units into the wall."""
+    y = -y_max to y_max, width units in from the wall's inside edge and beyond units into the wall.
+    Round 4 (16 Nov 2026): y_max 2,780 -> 2,180, so each rounded end stops about 1,020 units from the
+    nearest Walker, just outside its 24 m (about 945 units) reach."""
     t_max = math.asin(y_max / RY)
     def at(t, off):
         x, y = RX * math.cos(t), RY * math.sin(t)
@@ -93,7 +95,8 @@ PIT_SHAPES = [
     # The middle pits: from the centre pillars out to the upright wall by each red camp; the lane between them
     # is as wide as before.
     ('poly', _mid_pit(), 'x'),
-    # One long pit along each side of the outer wall (the old side and corner pits joined).
+    # One long pit along each side of the outer wall (the old side and corner pits joined), ending just
+    # outside each Walker's reach.
     ('poly', _side_pit(), 'x'),
     # A ring of pit around each pillar nearest a base.
     ('ellipse', P(311.5, 329.0), 430, 430, 'xy'),

@@ -59,6 +59,11 @@ const RIFT_SCALE = 1.57
 const BUFF_WAIT = 0.5 // seconds after a rift minion spawns before looking for the buff
 
 /** minionsStart begins the waves (call when the match starts). */
+/** riftProgress is how many of the RIFT_KILLS enemy deaths toward its next rift wave a team has. */
+export function riftProgress(team: number): number {
+  return Math.max(0, Math.min(RIFT_KILLS, T.heroKills[team] - riftWaves[team] * RIFT_KILLS))
+}
+
 export function minionsStart(): void {
   stopMinions()
   nextWave = M.clock + FIRST_WAVE_SECONDS

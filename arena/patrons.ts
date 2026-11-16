@@ -1,7 +1,7 @@
 // The two Patrons, floating above their team's spawn as decoration: The Hidden King (Amber, +Y) and The
-// Archmother (Sapphire, -Y), from the game's own Patron models. Plain prop_dynamic entities: not solid, no
-// health and no health bar, nothing can hit or kill them.
-import { createEntity, log, removeEntity, type Vector } from 'modlock'
+// Archmother (Sapphire, -Y), from the game's own Patron models. Plain prop_dynamic entities with their
+// collision turned off: no health and no health bar, nothing can hit or kill them or bump into them.
+import { createEntity, fireInput, log, removeEntity, type Vector } from 'modlock'
 import { BONUS_PATRON_BACK, BONUS_PATRON_HEIGHT, PATRON_FORWARD, PATRON_HEIGHT, PATRON_SCALE } from '../config'
 import { BONUS, SPAWNS } from './layout'
 
@@ -54,5 +54,8 @@ function place(team: number, position: Vector, yaw: number): void {
     ],
   })
   if (e === undefined) { log(`patrons: the game refused the ${team === AMBER ? 'Hidden King' : 'Archmother'}`); return }
+  // The solid key value alone left the Hidden King's collision on: an invisible wall in front of the
+  // Amber shop. DisableCollision turns it off for good.
+  if (!fireInput(e, 'DisableCollision')) log(`patrons: the ${team === AMBER ? 'Hidden King' : 'Archmother'} refused DisableCollision`)
   placed.push(e)
 }

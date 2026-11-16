@@ -349,13 +349,14 @@ function keepCursors(): void {
   }
 }
 
-// The minimap is hidden for everyone: it shows Deadlock's own map, not this arena. A request sent while a
+// The minimap is hidden for everyone: it shows Deadlock's own map, not this arena. So is the game's top bar:
+// the mod draws its own (hud.tsx's TopBar), with the tickets in place of team souls. A request sent while a
 // player's game is still loading is lost, and hide() before a reload drops it, so this asks again every 2 s.
 // While M.hudHidden is set, the whole game HUD is hidden instead (the mod's own screen stays).
 function keepMinimapHidden(): void {
   if (M.clock < M.nextMinimapHide) return
   M.nextMinimapHide = M.clock + 2
-  for (const m of members()) if (!m.bot && cast.pawn(m.player) !== undefined) hideHud(m.player, [M.hudHidden ? 'all' : 'minimap'])
+  for (const m of members()) if (!m.bot && cast.pawn(m.player) !== undefined) hideHud(m.player, M.hudHidden ? ['all'] : ['minimap', 'topBar'])
 }
 
 /** hideGameHud hides the whole game HUD for everyone, or brings it back (without the minimap), from the next frame. */
