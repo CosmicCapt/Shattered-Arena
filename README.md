@@ -13,15 +13,18 @@ Built with [Modlock](https://github.com/paralin/modlock) in TypeScript. Playable
 - **Heavy melee knockback:** an enemy's heavy melee pushes you the way they face and empties your stamina. Use it to throw people into pits.
 - **Minions:** waves every 30 seconds from each base, walking to the enemy portal and fighting on the way.
 - **Rift minions:** every 10 enemy deaths, a team sends 5 big, tough rift minions down the middle. Each one that gets in costs the enemy 2 tickets.
-- **Camps:** six tough jungle camps (the game's tier 3 creatures). Clearing one drops a real bridge buff (casting, gun or movement), taken with heavy melee.
+- **Camps:** six jungle camps, each a single tough creature (the game's tier 3) in the middle of the camp. Clearing one drops a real bridge buff (casting, gun or movement), taken with heavy melee.
 - **Shared souls:** minion and hero kill souls pay the whole team the same.
 - **Bonus round:** when a team wins, both teams go to a separate arena for a last-team-standing fight (no respawns, no ultimates). It can be turned off.
-- **Host settings** on the team select screen: tickets, respawn time, souls gain, starting souls, knockback strength, and the bonus round.
+- **Host settings** on the team select screen, which everyone can see but only the host can change: tickets, respawn time, souls gain, starting souls and knockback strength, plus switches for:
+  - **Random Heroes:** everyone gets a random hero instead of picking.
+  - **Allow Duplicate Characters:** the same hero can be on a team more than once.
+  - **Bonus Round:** on or off.
+  - **Randomize Teams:** everyone is shuffled into two even teams before the hero pick.
 - **Fair play:** no console cheats (`noclip`, `god` and the rest are refused) and no changing hero mid-match, from the console or the pause menu.
-
 - **The screen in a match:** the mod's own top bar (each hero in their team's colour, greyed with a respawn timer while dead, with a dot that lights gold when their ultimate is ready, and the clock and tickets in the middle) and, bottom right, each team's progress to its next rift minions.
 
-Match flow: team select, then everyone picks a hero at once (no hero twice on a team), a short intro, the match, then a results screen with each player's stats, hero and items, and whether your team won the bonus round.
+Match flow: team select, then everyone picks a hero at once (no hero twice on a team unless the host allows it) or gets a random one, a short intro, the match, then a results screen with the match length, each player's stats, hero and items, and whether your team won the bonus round.
 
 ## Building and running
 

@@ -12,7 +12,7 @@ Builds, in grey blockout (dev_measuregeneric01b) with tints:
     ceiling at 1,000
   - the pits: purple rims straight down to -1,600 and no floor (the mod kills heroes below -100)
 Entities: sun, team spawns, nav seeds, four lane paths (one per minion spawn) with trooper spawns,
-shop zones and markers, portal markers, six tier 3 camps, four Walkers (T2 towers; the mod makes them
+shop zones and markers, portal markers, six tier 3 camps (one unit each), four Walkers (T2 towers; the mod makes them
 indestructible). No Deadlock models (they crash Hammer); the mod places the shop models.
 Don't run it over the map once it has been edited in Hammer: it rebuilds everything."""
 import sys, os, math
@@ -432,7 +432,8 @@ for team, p in E['shops']:
 for team, p in E['portals']:
     entities.append(make_entity('info_target_server_only', (p[0], p[1], 0), targetname=f'arena_portal_{TN[team]}'))
 
-# Camps: tier 3, two strong units each (16 Nov 2026; they were tier 1, Midtown's small camps' units). The kind (blue, red, purple) is in the camp's
+# Camps: tier 3, one strong unit each, in the middle of the camp (16 Nov 2026; two tier 3 units was too much,
+# and before that they were tier 1, Midtown's small camps' units). The kind (blue, red, purple) is in the camp's
 # name, arena_camp_<kind>_<n>, which the mod reads to pick the bridge buff it drops.
 # Each buff has its own kind of unit, the same on both sides: Specimens (casting), Lanterns (gun), Gutter Ghouls (movement).
 CAMP_UNIT = {'blue': 'neutral_specimen_strong', 'red': 'neutral_lantern_strong', 'purple': 'neutral_drain_creature_strong'}
@@ -440,14 +441,8 @@ for i, (kind, p) in enumerate(E['camps'], 1):
     name = f'arena_camp_{kind}_{i}'
     entities.append(make_entity('info_neutral_trooper_camp', (p[0], p[1], 0), targetname=name, campname=name,
                                 tetherradiusoverride=400, initialspawndelayinseconds=1, spawnintervalinseconds=120))
-    # The two units stand along the nearest side wall (not across it), so neither spawns inside it.
-    wa, wb = min(E['side_walls'], key=lambda w: seg_dist(p, w[0], w[1]))
-    wl = math.dist(wa, wb); ux, uy = (wb[0] - wa[0]) / wl, (wb[1] - wa[1]) / wl
-    for k in range(2):
-        sgn = 1 if k == 0 else -1
-        sx, sy = p[0] + ux * 110 * sgn, p[1] + uy * 110 * sgn
-        entities.append(make_entity('info_neutral_trooper_spawn', (sx, sy, 0), (0, yaw_to((sx, sy), (0, 0)), 0), campname=name,
-                                    eneutraltroopertype=-1, neutralsubclass=CAMP_UNIT[kind], teamnumber=4))
+    entities.append(make_entity('info_neutral_trooper_spawn', (p[0], p[1], 0), (0, yaw_to(p, (0, 0)), 0), campname=name,
+                                eneutraltroopertype=-1, neutralsubclass=CAMP_UNIT[kind], teamnumber=4))
 # T2 towers: Walkers, each team's own unit entry (the wrong one gives the other team's model).
 for team, p in E['towers']:
     entities.append(make_entity('npc_boss_tier2', (p[0], p[1], 0), (0, yaw_to(p, (0, 0)), 0), teamnumber=team,

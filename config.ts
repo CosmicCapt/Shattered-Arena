@@ -98,6 +98,11 @@ export const HUD_REBUILD_SECONDS = 15
 export const BASE_HEAL_PER_SECOND = 0.15 // share of max health per second in your own spawn room
 export const BASE_ENEMY_DAMAGE_PER_SECOND = 0.25 // share of max health per second for an enemy in your spawn room
 
+// ------------------------------------------------------------------ host switches (team select)
+export const RANDOM_HEROES = false // everyone gets a random hero; the hero pick is a short reveal
+export const RANDOM_REVEAL_SECONDS = 6 // the reveal stays up at least this long once everyone has a hero
+export const DUPLICATE_HEROES = false // a hero may be on the same team more than once
+export const RANDOM_TEAMS = false // everyone is shuffled into two even teams when the hero pick starts
 // ------------------------------------------------------------------ match flow
 export const TEAM_COUNTDOWN = 3 // lobby: seconds after everyone is ready
 export const PICK_SECONDS = 45 // hero pick: everyone picks at once; unlocked players get their selection or a random hero

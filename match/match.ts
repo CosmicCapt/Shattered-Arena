@@ -1,7 +1,8 @@
 // The match flow, all on one map (no reload until the match is over):
 //
 //   lobby    team select with ready-up and test bots; the clock is held at 0:00
-//   heroes   everyone picks at once; the same hero can be on both teams, never twice on one
+//   heroes   everyone picks at once (or gets a random hero); the same hero can be on both teams, and twice on
+//            one only if the host allows duplicates; the host can have the teams shuffled first
 //   seating  everyone is put on their pick at their spawn and held still until all are in
 //   live     the match: tickets, minions, pits (tickets.ts, minions.ts)
 //   results  the winner is shown, then the map reloads into a fresh lobby
@@ -35,6 +36,10 @@ import {
   PICK_SECONDS,
   PICKED_COUNTDOWN,
   BONUS_ROUND,
+  DUPLICATE_HEROES,
+  RANDOM_HEROES,
+  RANDOM_REVEAL_SECONDS,
+  RANDOM_TEAMS,
   KNOCKBACK_PERCENT,
   KNOCKBACK_PERCENT_MAX,
   KNOCKBACK_PERCENT_STEP,
@@ -112,6 +117,7 @@ export const M = {
   counting: false, // seating: the countdown is on
   goAt: undefined as number | undefined, // seating: the match starts at this time
   liveAt: 0, // when the match started
+  endedAt: 0, // when the match was won (the bonus round not counted)
   startTickets: START_TICKETS, // each team's tickets next match; the host sets it on team select
   soulScale: SOUL_SCALE, // share of normal minion and kill souls; the host sets it on team select
   respawnSeconds: RESPAWN_SECONDS, // every respawn in the match; the host sets it on team select
@@ -121,6 +127,10 @@ export const M = {
   nextMinimapHide: 0,
   hudHidden: false, // the whole game HUD is hidden, for a cinematic shot
   bonusRound: BONUS_ROUND, // a bonus round after the match; the host sets it on team select
+  randomHeroes: RANDOM_HEROES, // the host's switches on team select (config.ts)
+  duplicateHeroes: DUPLICATE_HEROES,
+  randomTeams: RANDOM_TEAMS,
+  teamsShuffled: false, // heroes: the teams were shuffled for this match
   winner: undefined as number | undefined, // results: the winning team
   bonusWinner: undefined as number | 'draw' | undefined, // results: who won the bonus round, when there was one
   resultsEnd: 0,
@@ -226,11 +236,14 @@ export function changeKnockback(player: Player, steps: number): void {
   log(`match: melee knockback set to ${M.knockback}%`)
 }
 
-/** changeBonusRound turns the bonus round on (a step up) or off (a step down), for the host on team select only. */
-export function changeBonusRound(player: Player, steps: number): void {
-  if (M.phase !== 'lobby' || cast.get(player) !== host()) return
-  M.bonusRound = steps > 0
-  log(`match: bonus round ${M.bonusRound ? 'on' : 'off'}`)
+/** The host's on/off switches on team select. */
+export type Switch = 'randomHeroes' | 'duplicateHeroes' | 'bonusRound' | 'randomTeams'
+
+/** setSwitch turns one of the host's switches on or off, for the host on team select only. */
+export function setSwitch(player: Player, which: Switch, on: boolean): void {
+  if (M.phase !== 'lobby' || cast.get(player) !== host() || M[which] === on) return
+  M[which] = on
+  log(`match: ${which} ${on ? 'on' : 'off'}`)
 }
 
 /** changeStartSouls moves the starting souls to the next amount up or down in START_SOULS_OPTIONS (host only). */
@@ -293,7 +306,7 @@ function smallerTeam(): number {
   return amber <= sapphire ? AMBER : SAPPHIRE
 }
 
-/** randomHero picks a hero nobody on the viewer's team has locked in (any hero without a viewer). */
+/** randomHero picks a hero nobody on the viewer's team has locked in (any hero without a viewer, or with duplicates on). */
 function randomHero(viewer: Member | undefined): string | undefined {
   const free = heroes.filter((h) => heroTakenBy(h.name, viewer) === undefined)
   const list = free.length > 0 ? free : heroes
@@ -302,11 +315,11 @@ function randomHero(viewer: Member | undefined): string | undefined {
 
 /**
  * heroTakenBy returns the viewer's teammate who has locked in a hero, if any. Both teams may play the
- * same hero; only one player per team may. The heroes everyone stands around as in the lobby are
+ * same hero; only one player per team may, unless the host allows duplicates (then nothing is taken). The heroes everyone stands around as in the lobby are
  * placeholders and don't count.
  */
 export function heroTakenBy(hero: string, viewer: Member | undefined): Member | undefined {
-  if (viewer === undefined || viewer.team === undefined) return undefined
+  if (viewer === undefined || viewer.team === undefined || M.duplicateHeroes) return undefined
   return members().find((m) => m !== viewer && m.team === viewer.team && m.locked && m.hero === hero)
 }
 
@@ -455,10 +468,15 @@ export function lobbyProblem(): string | undefined {
 
 // --------------------------------------------------------------- heroes
 // Everyone picks at once. The same hero can be on both teams (citadel_allow_duplicate_heroes), but not
-// twice on one team: a hero a teammate has locked in is taken. When the time runs out, anyone not locked
+// twice on one team unless the host allows duplicates: a hero a teammate has locked in is taken. When the time runs out, anyone not locked
 // in gets the hero they had selected if it is still free on their team, or else a random free one.
 // Bots pick once every player has locked in, one after another: a bot keeps the hero it has if no
 // teammate took it, and is otherwise replaced by a bot on a free hero (Modlock can't change a bot's hero).
+/** matchLength is how long the match ran, from GO to the win (the bonus round not counted), in seconds. */
+export function matchLength(): number {
+  return Math.max(0, M.endedAt - M.liveAt)
+}
+
 export function pickTimeLeft(): number {
   return secondsUntil(M.pickEndsAt)
 }
@@ -474,15 +492,49 @@ function startHeroSelect(): void {
   M.pickEndsAt = M.clock + PICK_SECONDS
   M.allPickedAt = undefined
   M.botPicksFrom = undefined
+  M.teamsShuffled = false
   allowDuplicateHeroes()
   for (const m of members()) {
     m.hero = undefined
     m.locked = false
   }
-  for (const m of members()) {
-    if (!m.bot && m.team !== undefined) m.player.announce('PICK YOUR HERO', `${PICK_SECONDS} seconds. No hero twice on your team.`)
+  if (M.randomTeams) shuffleTeams()
+  if (M.randomHeroes) {
+    // Every player gets a random hero at once (bots pick theirs as usual, after the players).
+    for (const m of members()) if (!m.bot && m.team !== undefined) lockPick(m)
   }
-  log('match: hero pick')
+  const shuffled = M.teamsShuffled ? 'Teams were shuffled. ' : ''
+  for (const m of members()) {
+    if (m.bot || m.team === undefined) continue
+    if (M.randomHeroes) m.player.announce('RANDOM HEROES', `${shuffled}You are ${heroTitle(m.hero)}.`)
+    else m.player.announce('PICK YOUR HERO', `${shuffled}${PICK_SECONDS} seconds.${M.duplicateHeroes ? '' : ' No hero twice on your team.'}`)
+  }
+  log(`match: hero pick${M.randomHeroes ? ' (random heroes)' : ''}`)
+}
+
+/**
+ * shuffleTeams puts everyone on a team at random, the two teams as even as can be. A player is moved in the
+ * game too; a bot that changes side is replaced by a new bot on the other team (Modlock can't move a bot),
+ * which joins a moment later and picks as usual. Bots leave first, so their places are free for the players.
+ */
+function shuffleTeams(): void {
+  const everyone = members().filter((m) => m.team !== undefined)
+  for (let i = everyone.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[everyone[i], everyone[j]] = [everyone[j], everyone[i]]
+  }
+  const first = Math.random() < 0.5 ? AMBER : SAPPHIRE
+  const second = first === AMBER ? SAPPHIRE : AMBER
+  const half = Math.ceil(everyone.length / 2)
+  const moves = everyone.map((m, i) => ({ m, team: i < half ? first : second })).filter((x) => x.m.team !== x.team)
+  for (const { m, team } of moves) if (m.bot) replaceBot(m, heroNameOf(m) ?? randomHero(undefined) ?? 'hero_atlas', team)
+  for (const { m, team } of moves) {
+    if (m.bot) continue
+    m.team = team
+    putOnGameTeam(m, team)
+  }
+  M.teamsShuffled = true
+  log(`match: teams shuffled (${moves.length} moved)`)
 }
 
 /** pickHero selects a hero (not locked yet). A hero a teammate has locked in can't be selected. */
@@ -523,12 +575,15 @@ function lockPick(m: Member): void {
   m.locked = m.hero !== undefined
   log(`match: ${m.name} locked in ${heroTitle(m.hero)} (${teamName(m.team)})`)
   // A teammate who had only selected this hero loses the selection.
-  for (const o of members()) {
-    if (o !== m && o.team === m.team && !o.locked && o.hero === m.hero) o.hero = undefined
+  if (!M.duplicateHeroes) {
+    for (const o of members()) {
+      if (o !== m && o.team === m.team && !o.locked && o.hero === m.hero) o.hero = undefined
+    }
   }
 }
 
 function heroesTick(): void {
+  botsTick() // bots replaced on another hero or team join as soon as they are due
   const picking = members().filter((m) => m.team !== undefined)
   if (picking.length === 0) {
     resetToLobby('Everyone left hero select.')
@@ -546,7 +601,6 @@ function heroesTick(): void {
     // joins is not waited for beyond BOT_PICK_LIMIT.
     M.botPicksFrom ??= M.clock
     const waited = M.clock - M.botPicksFrom > BOT_PICK_LIMIT
-    botsTick()
     if (botsJoining() > 0 && !waited) return
     const bot = picking.find((m) => m.bot && !m.locked)
     if (bot !== undefined && waited) {
@@ -562,7 +616,17 @@ function heroesTick(): void {
     M.allPickedAt = M.clock
     return
   }
-  if (M.clock - M.allPickedAt >= PICKED_COUNTDOWN) startSeating()
+  if (M.clock >= seatingAt()) startSeating()
+}
+
+/**
+ * seatingAt is when the hero pick ends once everyone is locked in: PICKED_COUNTDOWN later, and with random
+ * heroes no sooner than RANDOM_REVEAL_SECONDS after the pick began.
+ */
+export function seatingAt(): number {
+  if (M.allPickedAt === undefined) return Infinity
+  const after = M.allPickedAt + PICKED_COUNTDOWN
+  return M.randomHeroes ? Math.max(after, M.pickEndsAt - PICK_SECONDS + RANDOM_REVEAL_SECONDS) : after
 }
 
 // -------------------------------------------------------------- seating
@@ -720,6 +784,7 @@ export function setRespawnTime(seconds: number): void {
 export function endMatch(winner: number): void {
   if (M.phase !== 'live') return
   M.winner = winner
+  M.endedAt = M.clock
   M.bonusWinner = undefined
   onEnd?.()
   log(`match: ${teamName(winner)} wins`)

@@ -63,11 +63,16 @@ export function botJoined(m: Member): void {
   picks.delete(m.name)
 }
 
-/** replaceBot swaps a bot for a new one of the same name and team on another hero, which joins a moment later. */
-export function replaceBot(m: Member, hero: string): void {
+/**
+ * replaceBot swaps a bot for a new one on another hero, which joins a moment later: of the same name and
+ * team, or on team (shuffled teams) under a new name for that team, since a bot's name says its team.
+ */
+export function replaceBot(m: Member, hero: string, team?: number): void {
   if (!m.bot || m.team === undefined) return
-  queued.push({ name: m.name, team: m.team, hero, at: M.clock + READD_AFTER })
-  log(`bots: ${m.name} is coming back on ${hero}`)
+  const moving = team !== undefined && team !== m.team
+  const name = moving ? `${patronName(team).replace(/^The /, '')} Bot ${++counter}` : m.name
+  queued.push({ name, team: moving ? team : m.team, hero, at: M.clock + READD_AFTER })
+  log(`bots: ${m.name} is coming back${moving ? ` as ${name} on ${teamName(team)}` : ''} on ${hero}`)
   m.team = undefined // out of the pick until the game drops it
   m.player.removeBot()
 }
