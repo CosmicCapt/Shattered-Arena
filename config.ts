@@ -81,6 +81,30 @@ export const RIFT_HEIGHT = 190 // units above the floor for the rift's middle: t
 // Every camp spawns when the match starts. A cleared camp drops its bridge buff (blue casting, red gun,
 // purple movement); once the buff is taken the camp comes back this many seconds later.
 export const CAMP_RESPAWN = 120
+// Sinner's Sacrifices (arena/sinners.ts): when they first come (match time, seconds), how soon they come
+// back once cleared, and the tickets they give: per heavy melee hit (a Sinner takes four, then a fifth that is
+// the jackpot or not), and for a last hit that is a jackpot (a last hit without one gives nothing). A hit is paid SINNER_SETTLE seconds later, when it is known not to
+// be the last. SINNER_JACKPOT_STATE: the Sinner's vault state that means a jackpot, once learned from the
+// log (undefined: a Sinner that goes while it still has health counts as a jackpot).
+export const SINNER_PIT_AT = 300
+export const SINNER_EDGE_AT = 600
+export const SINNER_RESPAWN = 120
+export const SINNER_HIT_TICKETS = 1
+export const SINNER_JACKPOT_TICKETS = 6
+export const SINNER_SETTLE = 1.6
+export const SINNER_JACKPOT_STATE: number | undefined = 4 // seen on a jackpot finish (2 -> 4); unconfirmed whether a missed one also ends in 4
+// Arrivals: a pit Sinner's island rises SINNER_RISE_TIME seconds before the Sinner is due (the map's mover is
+// built to take this long: SINNER_ISLAND_RISE in tools/build_arena_v1.py; change both together) and sinks
+// SINNER_SINK_DELAY seconds after it's cleared, with SINNER_RUMBLE_SOUND while it moves. Every Sinner falls
+// SINNER_DROP_HEIGHT units in SINNER_DROP_TIME seconds and lands with SINNER_LAND_EFFECT and SINNER_LAND_SOUND
+// (the game's own sound events and effects).
+export const SINNER_RISE_TIME = 4
+export const SINNER_SINK_DELAY = 3
+export const SINNER_DROP_HEIGHT = 1400
+export const SINNER_DROP_TIME = 1.2
+export const SINNER_RUMBLE_SOUND = 'MidBoss.Arrive'
+export const SINNER_LAND_SOUND = 'Koth.Spawn.Start'
+export const SINNER_LAND_EFFECT = 'particles/abilities/tier2boss_stomp.vpcf'
 
 // ------------------------------------------------------------------ respawns and bases
 export const RESPAWN_SECONDS = 10 // every death, all match by default (set through the game's respawn ramps)

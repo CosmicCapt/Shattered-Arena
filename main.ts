@@ -14,6 +14,7 @@
 //   arena/  layout.ts  map positions (generated with the map)
 //           minions.ts minion waves walked along their routes, minion deaths, portal entries
 //           camps.ts   camps and their bridge buffs
+//           sinners.ts Sinner's Sacrifices that pay tickets for heavy melee hits
 //           base.ts    bases heal your team and burn enemies; the Walkers can't be destroyed
 //           shops.ts   shop models and shop zones
 //           patrons.ts the Patrons over the spawns
@@ -36,6 +37,7 @@ import { soulsDamaged, soulsStart, soulsTick } from './rules/souls'
 import { statsEnd, statsStart } from './match/stats'
 import { ticketsDamaged, ticketsReset, ticketsTick } from './rules/tickets'
 import { BUFF_MODELS, BUFF_PARTICLES, campsHold, campsPrepare, campsStart, campsStop, campsTick } from './arena/camps'
+import { SINNER_MODEL, SINNER_PARTICLES, sinnersDamaged, sinnersHealth, sinnersHold, sinnersStart, sinnersStop, sinnersTick } from './arena/sinners'
 import { knockbackDamage, knockbackInput, knockbackReset, knockbackTick, knockbackWatch } from './rules/knockback'
 import { bonusReset, bonusStart, bonusTick } from './bonus/bonus'
 import { holdShots } from './screen/cinema'
@@ -55,6 +57,8 @@ onStart(() => {
   if (!precache({ resources: [...RIFT_MODELS, ...RIFT_PARTICLES] })) log('precache refused the rift effects')
   if (!precache({ resources: Object.values(PATRON_MODELS) })) log('precache refused the Patron models')
   if (!precache({ resources: [RIFT_MINION_EFFECT] })) log('precache refused the rift minion effect')
+  if (!precache({ resources: [SINNER_MODEL] })) log('precache refused the Sinner model')
+  if (!precache({ resources: SINNER_PARTICLES })) log('precache refused the Sinner landing effect')
   knockbackWatch() // the melee key, to tell heavy melee from light
   lockdownStart() // no cheats or hero swaps
 })
@@ -80,12 +84,14 @@ whenLive(() => {
   soulsStart()
   minionsStart()
   campsStart()
+  sinnersStart()
 })
 whenBonus(bonusStart)
 whenOver(() => {
   statsEnd() // for the results card
   stopMinions()
   campsStop()
+  sinnersStop()
 })
 
 onDamage((hit) => {
@@ -94,6 +100,8 @@ onDamage((hit) => {
 })
 onDamaged((hit) => {
   ticketsDamaged(hit)
+  sinnersHealth(hit)
+  sinnersDamaged(hit)
   minionDamaged(hit)
   soulsDamaged(hit)
 })
@@ -113,6 +121,7 @@ onFrame((f) => {
       placeRifts() // the portals' look, played one piece a frame by riftsTick
       placePatrons() // the Patrons over the spawns
       campsHold() // no camps in team select; they spawn when the match starts
+      sinnersHold() // the Sinners come later in the match
     }
   }
   matchFrame(f.timeSeconds)
@@ -123,6 +132,7 @@ onFrame((f) => {
     soulsTick()
     knockbackTick()
     campsTick()
+    sinnersTick()
     minionTick()
     baseTick()
   }
